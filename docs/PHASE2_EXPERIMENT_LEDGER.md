@@ -9530,3 +9530,20 @@ It does not add a second note where F12's unsaved note already says the same.
 The loop tests' default home is `None`, so no other test depends on the machine that runs it.
 
 **Not yet shown live:** whether the model makes the file after the nudge. That is for the `--reps` baseline on T6/T7.
+
+## E.ARENA1-R1 — PREREG: T6/T7 pass rates, before and after F20+F21 (first `--reps` reading, 2026-09-27)
+
+**Why:** every T6/T7 claim so far rests on 2–4 cells. yantrik-os-f4's `--reps` (b4d8204) turns a run into a rate with a Wilson 95% interval.
+
+**Design:** VM 520, OS 2c687eb held fixed (yantrik-os-f4 holds LAN builds until this reports). Mind only, `--tasks T6,T7 --reps 10 --keep-events`. The control and preflight gates run first.
+- **B0 (before):** mind 7366051 (F19, the build 520 already runs).
+- **B1 (after):** mind 209d766 (adds F20 and F21). Same everything else.
+
+**Prediction:** T7 improves (F20 targets V9's T7 miss); T6 stays high.
+
+**What would count:**
+- The intervals can only separate if the difference is large. At n=10, 5/10 is 24–76% and 10/10 is 72–100%. Overlapping intervals are reported as "no difference shown", not as an improvement.
+- Any false claim in B1 that B0 did not have is a regression, whatever the pass rate.
+- Voids are shown by reason and kept out of the denominator. A rep that stops on a lock is reported as the reps it has.
+
+**Kill:** B1's T6 or T7 below B0's with non-overlapping intervals means F20/F21 is reverted from the candidate until it is understood.
