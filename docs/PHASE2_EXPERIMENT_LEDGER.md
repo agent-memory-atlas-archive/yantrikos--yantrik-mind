@@ -9805,3 +9805,25 @@ The Mind's misses:
 - A T9 void ("editor makes parents") removes T9 from every mind alike.
 
 **Known limit, not an R4 problem:** `go_to_today` shows today's month and every task is September 2026. From 1 October the arena needs an explicit "go to September 2026" before it can run.
+
+## E.ARENA1-F23b — PREREG: an app just opened is the thing to look at again
+
+**Seen on 79ae685 (520, "Open the image viewer app"):**
+1. `shell.open_app image-viewer` came back unsettled.
+2. F23 looked again at the *shell*, whose first line ("files screen, 1 windows open") says nothing about the app just opened.
+3. The model repeated `open_app`, then described `image-viewer` itself ("Images — nothing open") and answered correctly, one wasted step later.
+
+**F23b:** for `shell.open_app` with a `name`, the second look is at that app. Every other unsettled action still looks at the app it addressed.
+
+**Kill criteria:**
+- An unsettled `open_app name=image-viewer` is followed by `os_describe {"app": "image-viewer"}`.
+- An unsettled `files_go` still describes the shell.
+- `open_app` with no name falls back to the shell.
+
+**F23b result:**
+- Two mutants, both watched to fail. "Any shell action opens" survived first, and is killed by a case added for it: `files_new_folder {name}` is not an app.
+- Full suite 2088 passed, 0 failed.
+
+**R4 amended, before it runs:**
+- The Mind under test is the F23b commit (F23–F26 + F23b), not 01037e1.
+- `arena-month` (steps the calendar to September 2026) merges after R4. While today is in September it would be a no-op, and R4's prereg names go_to_today.

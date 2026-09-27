@@ -559,10 +559,16 @@ pub(crate) fn unsettled(obs: &str) -> bool {
     obs.lines().any(|l| l.trim().to_ascii_lowercase().contains("settled: false"))
 }
 
-/// E.ARENA1-F23: the look to take again -- the app the action addressed.
+/// E.ARENA1-F23: the look to take again -- the app the action addressed. F23b: for the shell's
+/// `open_app`, the app it opened. On 79ae685 the second look at the shell said "files screen, 1
+/// windows open" -- nothing about the image viewer just opened -- and the model opened it again.
 pub(crate) fn settle_look(tool: &str, args: &serde_json::Value) -> Option<serde_json::Value> {
-    let (app, _) = act_target(tool, args)?;
-    Some(serde_json::json!({"app": app}))
+    let (app, action) = act_target(tool, args)?;
+    let opened = (app == TWIN_HOST && action == "open_app")
+        .then(|| args.get("args")?.get("name")?.as_str())
+        .flatten()
+        .filter(|n| !n.trim().is_empty());
+    Some(serde_json::json!({"app": opened.unwrap_or(&app)}))
 }
 
 /// E.ARENA1-F23: the unsettled result, with what a second look found. Seen on 185b4c0: the Mind
@@ -1371,7 +1377,13 @@ mod tests {
         assert!(unsettled(got));
         assert!(!unsettled("Done \u{2014} Notes\naccepted: True, settled: True"));
         let open = serde_json::json!({"app": "shell", "action": "open_app", "args": {"name": "weather"}});
-        assert_eq!(settle_look(ACT, &open), Some(serde_json::json!({"app": "shell"})));
+        assert_eq!(settle_look(ACT, &open), Some(serde_json::json!({"app": "weather"})), "F23b: the app opened");
+        let go = serde_json::json!({"app": "shell", "action": "files_go", "args": {"path": "/home/yantrik"}});
+        assert_eq!(settle_look(ACT, &go), Some(serde_json::json!({"app": "shell"})));
+        let bare = serde_json::json!({"app": "shell", "action": "open_app"});
+        assert_eq!(settle_look(ACT, &bare), Some(serde_json::json!({"app": "shell"})), "no name: the shell");
+        let folder = serde_json::json!({"app": "shell", "action": "files_new_folder", "args": {"name": "arena-x"}});
+        assert_eq!(settle_look(ACT, &folder), Some(serde_json::json!({"app": "shell"})), "a folder's name is not an app");
         assert_eq!(settle_look(DESCRIBE, &open), None);
         let later = settled_since(got, "Yantrik \u{2014} desktop screen, 1 windows open, calendar, email and notes not running\nrevision: 1\n{}");
         assert!(later.starts_with(got), "the desktop's own answer is kept");
