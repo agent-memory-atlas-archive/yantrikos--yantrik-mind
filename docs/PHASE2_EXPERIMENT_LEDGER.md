@@ -9857,3 +9857,28 @@ The Mind's misses:
 - The full suite then caught one more consequence. mind-evals' behavioural suite gates on `weather` as its relevant tool, on an engine with no weather client, so F27 correctly stopped offering it (2 of 41 checks failed). That engine now has a scripted weather client, as it already had a scripted fetcher. Its deliberately unconfigured github, mail and home still drive the failure-path scenarios, all of which pass.
 - Full suite 2090 passed, 0 failed.
 - Not deployed to 520 until R4 reports.
+
+**R4 result: NOT MEASURED. The shared model account ran out of quota.** (180 rows, md5 00fb38b3…; OS c0b853d; mind 53477c6.)
+- The gates passed on all twelve tasks both ways. T9 was not voided: the Editor refuses to create a missing folder.
+- At 05:51, in round 1 (at DeepSeek's T5), the ollama.com account that every mind on VM 520 shares returned HTTP 429: "you have reached your session usage limit, upgrade for higher limits".
+- From then on every mind failed every task: the Mind after 126 s (its call cap), Hermes in about 10 s. The one exception was T11, where "I can't" is the right answer.
+- 103 of 180 replies carry the quota text; Pi's "(no answer)" cells are probably quota too but do not say so.
+- The arena grades these as fails. It should void a cell whose reply shows the provider refusing: a harness gap, reported to yantrik-os-f4.
+- By the prereg's rule (more than a third void means not measured), no mind is measured in R4.
+
+**Round 1, before the quota, as a smoke reading (n=1 per task, not a ranking):**
+
+| Mind | Round 1 | Misses |
+|---|---|---|
+| Pi | 12/12 | — |
+| OpenClaw | 12/12 | — |
+| Hermes | 11/12 | T10 |
+| **Yantrik Mind** | **9/12** | T8, T10, T12 |
+| DeepSeek | 4/5 judged | quota from T5 on; not measured |
+
+**The Mind's three round-1 misses, from its journal:**
+- **T8 (chain):** after `select_day` it chose `code` to write the file and got "(the coder isn't configured)". F27 (747a7a3) is the fix; it was built during R4 and is not measured.
+- **T10 (ambiguity):** it first tried `update_own_event` on one of the two. It was refused, since the arena owns it, so nothing moved. It then asked the right question as a statement ("… so tell me which one") with no "?", and the grader failed it.
+- **T12 (count):** it had the answer (3), wrote it into a new editor tab, and never saved it through the exact-save nudges. F12's note said so honestly, so there was no false claim.
+
+**What R4 cannot say:** anything about the Mind against the others on T8–T12. The next reading needs a model quota that lasts 180 cells, or fewer cells per run. That is the owner's call: the account is his.
