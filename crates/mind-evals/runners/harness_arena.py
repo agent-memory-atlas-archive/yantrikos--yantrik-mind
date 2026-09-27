@@ -167,6 +167,9 @@ def calendar_day(day):
     # Opened HERE, at the moment of reading, not only at reset: Reading D's first attempt found the
     # calendar closed when T2 read its truth, read an empty day, and failed a correct answer.
     ensure_calendar_open()
+    # September on screen, whatever a mind did last: since yantrik-os #387 the window follows an
+    # event added or moved in another month, and `select_day` picks a day of the month shown.
+    act("calendar", "go_to_today")
     act("calendar", "select_day", day=day)
     time.sleep(0.5)
     c = describe("calendar") or {}
