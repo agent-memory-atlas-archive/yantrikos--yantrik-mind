@@ -113,6 +113,11 @@ pub async fn run_loop_scenario(s: &LoopScenario) -> ScenarioResult {
     )
     .with_web(Arc::new(mind_tools::ScriptedFetcher::new(
         "WEBDOC: Teal is a cyan-family blue-green color.",
+    )))
+    // E.F27: a model is offered only tools that can run, and the gating scenarios use `weather` as
+    // their relevant tool -- so this engine has a weather client, as it has a fetcher.
+    .with_weather(Arc::new(mind_tools::ScriptedWeather::new(
+        "WEATHER: 18°C, clear.",
     )));
 
     let answer = conv

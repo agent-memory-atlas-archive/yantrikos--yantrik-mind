@@ -9018,7 +9018,7 @@ WINDOW: all-time, latest 200
                     .flatten()
                     .map(|s| s.len())
                     .unwrap_or(0);
-                let gated_src = self.catalog_source();
+                let gated_src = self.offered_catalog();
                 let (detailed, tail) = tool_catalog::gate_catalog(probe, &gated_src);
                 let schemas = tool_catalog::tool_schemas(probe, &gated_src);
                 let schema_bytes = serde_json::to_string(&schemas).map(|s| s.len()).unwrap_or(0);
@@ -11934,7 +11934,7 @@ WINDOW: all-time, latest 200
                 // equally-relevant lines, the one that has actually been working ranks first.
                 let track = self.memory.tool_track_record().await.unwrap_or_default();
                 let native = {
-                    let src = format!("{}\n{}", tool_catalog::CORE_HEAD, self.catalog_source());
+                    let src = format!("{}\n{}", tool_catalog::CORE_HEAD, self.offered_catalog());
                     let mut lines = tool_catalog::search_lines_with_evidence(&q, &src, 6, &track);
                     // COUNTERFACTUAL RECORD: when measured history CHANGED the top pick vs the
                     // legacy semantic-only ranking, say so — selected vs what-would-have-been.
@@ -12581,7 +12581,7 @@ Open reminders you're carrying for them:",
         let gated_src = if names_nothing {
             self.plugins.lock().unwrap().restricted_turn_catalog()
         } else {
-            self.catalog_source()
+            self.offered_catalog()
         };
         let (detailed, name_tail) = tool_catalog::gate_catalog(user_text, &gated_src);
         let tools = format!(

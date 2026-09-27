@@ -16493,6 +16493,54 @@ mod desktop_failed_action_retry_wiring {
 /// E.ARENA1-F7b/F8/F9/F10 through the real agent loop. One scripted model and a scripted desktop
 /// that records every call it receives, so each test asserts what actually reached the desktop.
 #[cfg(test)]
+mod catalog_offers_only_what_can_run {
+    use super::*;
+
+    fn engine() -> ConversationEngine {
+        let mem: Arc<dyn MemoryFacade> = Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap());
+        let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+        ConversationEngine::new(mem, pool, "YM")
+    }
+
+    /// E.F27: no coder on this engine -- the catalog does not offer `code`, and the capability report
+    /// (unchanged) still names it, as unavailable. A plugin with no requirements stays.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_tool_that_cannot_run_is_not_offered() {
+        let e = engine();
+        let cat = e.offered_catalog();
+        assert!(!cat.contains("- code {task}"), "offered a coder that is not configured");
+        assert!(e.catalog_source().contains("- code {task}"), "the contract source stays whole");
+        assert!(!cat.contains("- research {query}"), "offered research with no researcher");
+        let reg = e.plugins.lock().unwrap();
+        let free: Vec<String> = reg
+            .all_specs()
+            .iter()
+            .filter(|p| p.enabled && p.requires.is_empty() && !p.catalog.is_empty())
+            .map(|p| p.catalog.clone())
+            .collect();
+        drop(reg);
+        assert!(!free.is_empty());
+        for line in &free {
+            assert!(cat.contains(line.as_str()), "a plugin with no requirements went missing: {line}");
+        }
+        let report = e.capability_report();
+        let coder = report.capabilities.iter().find(|c| c.id == "coder").expect("the report still lists the coder");
+        assert!(coder.blocked_by.is_some(), "and says why it cannot run");
+    }
+
+    /// E.F27's other side, on the registry itself: what `can_run` admits is offered, and the
+    /// desktop calendar replacement is kept whatever `can_run` says.
+    #[test]
+    fn what_can_run_is_offered_and_the_replacement_stays() {
+        let reg = crate::plugins::PluginRegistry::builtin();
+        let all = reg.catalog_where(|_| true, None);
+        assert_eq!(all, reg.enabled_catalog(), "admit everything: the old catalog, byte for byte");
+        assert!(all.contains("- code {task}"));
+        let none = reg.catalog_where(|_| false, Some((crate::desktop::CALENDAR_PLUGIN, "- DESKTOP CALENDAR")));
+        assert_eq!(none, "- DESKTOP CALENDAR", "only the replacement survives admitting nothing");
+    }
+}
+
 mod desktop_consent_and_stall_wiring {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};

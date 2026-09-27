@@ -143,7 +143,7 @@ impl Bus for EngineBus {
                 .unwrap()
                 .restricted_turn_catalog();
         }
-        let src = self.engine.catalog_source();
+        let src = self.engine.offered_catalog();
         let (detailed, tail) = tool_catalog::gate_catalog(goal, &src);
         if tail.is_empty() {
             detailed

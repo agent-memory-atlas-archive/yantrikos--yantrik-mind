@@ -716,15 +716,24 @@ impl ConversationEngine {
     /// the audit's copy was the one nobody updated. Now the registry is the single source and this is
     /// its single reader.
     pub(crate) fn catalog_source(&self) -> String {
+        self.catalog_admitting(|_| true)
+    }
+
+    /// E.F27: the catalog a MODEL is shown -- only what can run. The coder's line tells the model
+    /// that writing a document is the coder's job; offered on a machine with no coder (VM 520), the
+    /// model chose it for file writes, was told "(the coder isn't configured)", and lost the thread
+    /// -- R4's T8, R2's T7, B0's T6. The capability report already knew; the menu never asked it.
+    /// `catalog_source` stays whole: argument contracts must not depend on what is configured.
+    pub(crate) fn offered_catalog(&self) -> String {
+        self.catalog_admitting(|p| self.first_unmet(&p.requires).is_none())
+    }
+
+    fn catalog_admitting(&self, can_run: impl Fn(&crate::plugins::PluginSpec) -> bool) -> String {
         // E.ARENA1-F1: with the desktop attached, its calendar is the only calendar on the menu.
-        let plugins = if self.desktop_attached() {
-            self.plugins
-                .lock()
-                .unwrap()
-                .enabled_catalog_replacing(crate::desktop::CALENDAR_PLUGIN, crate::desktop::CALENDAR_ON_DESKTOP)
-        } else {
-            self.plugins.lock().unwrap().enabled_catalog()
-        };
+        let replace = self
+            .desktop_attached()
+            .then_some((crate::desktop::CALENDAR_PLUGIN, crate::desktop::CALENDAR_ON_DESKTOP));
+        let plugins = self.plugins.lock().unwrap().catalog_where(can_run, replace);
         match self.mcp.as_ref().map(|h| h.catalog()).unwrap_or_default() {
             m if m.trim().is_empty() => plugins,
             m => format!("{plugins}\n{m}"),

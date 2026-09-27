@@ -9827,3 +9827,33 @@ The Mind's misses:
 **R4 amended, before it runs:**
 - The Mind under test is the F23b commit (F23–F26 + F23b), not 01037e1.
 - `arena-month` (steps the calendar to September 2026) merges after R4. While today is in September it would be a no-op, and R4's prereg names go_to_today.
+
+## E.F27 — PREREG: the agent is offered only tools that can run (written during R4; not deployed during it)
+
+**R4 rep 1, T8 (mind 53477c6):**
+1. After `select_day 25`, the model called `code {task: "Write a text file at … containing exactly \"10:00\""}` and got "(the coder isn't configured)".
+2. It then lost the thread: it described shell files_, repeated `select_day` twice, and composed. The file was never written.
+
+**The same derailment, three times before:**
+- B0's one T6 miss began with `code`.
+- R2 rep 3's T7 stall called `code`.
+- This T8.
+
+**The cause is in the catalogue, not the model.** The coder plugin says "Use this whenever the user asks you to CREATE, WRITE, BUILD or GENERATE an artifact — a document …" and declares `requiring(Requirement::Coder)`. But `catalog_source` renders every *enabled* plugin and never consults requirements; only the capability report does (`first_unmet`). So on VM 520, which has no coder, the model is told that writing a document is the coder's job, and the coder can only refuse. The same holds for `research` without a researcher, `github` without a token, and so on.
+
+**F27:** the agent catalogue renders only enabled plugins whose declared requirements are met, judged by the same `first_unmet` probe as the capability report. The desktop calendar replacement (E.ARENA1-F1) still applies.
+
+**Kill criteria:**
+- An engine without a coder has no `code {task}` line.
+- One with a coder still has it.
+- A plugin with no requirements is unaffected.
+- The capability report is unchanged.
+- **Affects every channel, not only the desktop.** Production has a coder configured, so its catalogue should not change. That is checked by the report's Ready set, not assumed.
+
+**F27, as built** (the full suite changed the design before commit): the first version filtered `catalog_source`. That is also where `admit_args` reads its argument contracts, so `watch_price {item, target}` was refused in a test engine without market data. That was caught by `every_declared_alias_satisfies_its_canonical_and_inherits_its_type`. The design now keeps the contract source whole and adds `offered_catalog`: the loop prompt, `discover_tools`, the cognitive planner and the prompt audit read the filtered catalogue, and admission is unchanged.
+
+**F27 result:**
+- Five mutants, all watched to fail: menu ignores requirements; nothing offered; contracts filtered too; can_run ignored; replacement dropped.
+- The full suite then caught one more consequence. mind-evals' behavioural suite gates on `weather` as its relevant tool, on an engine with no weather client, so F27 correctly stopped offering it (2 of 41 checks failed). That engine now has a scripted weather client, as it already had a scripted fetcher. Its deliberately unconfigured github, mail and home still drive the failure-path scenarios, all of which pass.
+- Full suite 2090 passed, 0 failed.
+- Not deployed to 520 until R4 reports.

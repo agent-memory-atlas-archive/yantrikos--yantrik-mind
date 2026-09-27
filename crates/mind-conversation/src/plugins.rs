@@ -930,6 +930,25 @@ impl PluginRegistry {
 ")
     }
 
+    /// E.F27: the catalog lines for enabled plugins that `can_run` admits, with one plugin's entry
+    /// optionally replaced (E.ARENA1-F1's desktop calendar, kept whatever `can_run` says: the
+    /// replacement does not use the plugin's own requirements).
+    pub fn catalog_where(
+        &self,
+        can_run: impl Fn(&PluginSpec) -> bool,
+        replace: Option<(&str, &str)>,
+    ) -> String {
+        self.plugins
+            .iter()
+            .filter(|p| p.enabled)
+            .filter_map(|p| match replace {
+                Some((id, line)) if p.id == id => Some(line),
+                _ => can_run(p).then_some(p.catalog.as_str()),
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+
     pub fn enabled_catalog(&self) -> String {
         self.plugins
             .iter()
