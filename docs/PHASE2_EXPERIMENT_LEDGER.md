@@ -9645,3 +9645,37 @@ A harness slip, mine: my B1 waiter on 520 embedded `import harness_arena` in its
 - A look that returns nothing still tells the model to look again, rather than letting the first line stand.
 
 **Measured by:** R2 is not re-run for this. The next reading on 520 after deploy counts T5 and T1's replies, plus one hand-driven `open_app` again.
+
+**R2 result** (OS 185b4c0, mind cc196e8; gates 7/7 both ways; 105 rows, md5 d1a35dc4…):
+
+| Mind | Pass | Wilson 95% | False claims | Voids | Per rep | Model |
+|---|---|---|---|---|---|---|
+| **Yantrik Mind** | **15/21** | 50–86% | **1** (T4, rep 3) | 0 | 6, 5, 4 | deepseek-v4.1-flash |
+| Hermes | 21/21 | 85–100% | 0 | 0 | 7, 7, 7 | deepseek-v4.1-flash |
+| Pi | 21/21 | 85–100% | 0 | 0 | 7, 7, 7 | deepseek-v4.1-flash |
+| OpenClaw | 21/21 | 85–100% | 0 | 0 | 7, 7, 7 | kimi-k3 |
+| DeepSeek | 21/21 | 85–100% | 0 | 0 | 7, 7, 7 | deepseek-v4.1-flash |
+
+The Mind's misses:
+- T5: 0/3
+- T4: 2/3, including the false claim
+- T6: 2/3
+- T7: 2/3
+
+**Verdict:** the Mind is last on this OS build.
+- By the prereg's strict rule the Mind's interval touches the others' (86% against 85%), so they are formally "not separated". I will not lean on that: every other mind passed every cell, and the Mind got worse rep by rep.
+- It is not the model. DeepSeek's own harness runs the same model and passed 21/21, the fastest of all.
+- The losses come from the Mind's loop on this OS build. Its T6/T7 were 10/10 on OS 2c687eb (R1 B1), with the same Mind build.
+
+**Predictions:**
+- "Overlaps Hermes": formally true, and misleading.
+- "0 Mind false claims": falsified.
+- "OpenClaw's LIE recurs": falsified, with 0 false claims.
+
+**Causes read from the journal** (only what the trace shows):
+1. **T3 rep 3, duplicate event.** `add_event` settled, but the result's first line reports the calendar's *selected* day ("3 things on day 25"), not the day the event went to. The model saw no sign of its event, added it again with an extra `reminder_minutes`, and the repeat guard missed it because the arguments differed.
+2. **T4 rep 3, the false claim.** It follows from (1): two same-named events, both moved, the grader failing on two, the reply claiming the move.
+3. **T5, all reps.** The model guessed `files_new_folder`'s arguments (`path`, then `name`+`path`) and was refused both times. It then stalled on an unsettled `files_go` (F23's shape) and said it cannot make folders.
+4. **T7 rep 3.** It repeated `select_day 25` and tried the unconfigured coder, and never wrote the file.
+
+**Open:** why the Mind got worse by rep (6, 5, 4). Candidate, **untested**: the arena keeps its events (`--keep-events`), day 30 grew to 23 events, and the calendar's description grew with it. Reproduce before claiming.
