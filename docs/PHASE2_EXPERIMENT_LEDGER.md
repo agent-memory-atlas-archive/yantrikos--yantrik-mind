@@ -9469,3 +9469,14 @@ yantrik-os #316 regrades `shell.use_harness` (with `pin_app`, `set_do_not_distur
 ## E.ARENA1-F17 — repeats do not end a turn with its document unsaved
 
 F12 nudged once for the save on the **answer** path. A turn ended by barren **repeats** skipped that and went straight to compose (V5's T6/T7). When repeats would end the turn with a document still unsaved and that nudge not yet given, the loop now gives it and one more step. Tested by replaying V5's T6 (new, new, new, then `save_as` reaches the desktop). F12's compose-path test was extended by two repeats to still reach compose. Two mutants, each watched to fail. **Found in passing:** `mind-memory`'s `a_mounted_pack_is_floored_on_similarity_and_names_itself` failed once under a full parallel run (`probe.len()` ≠ 2) and passed 3/3 alone and in the next full run. It is flaky under load and unrelated to this change; recorded, not fixed. Workspace: 2069 passed, 0 failed.
+
+### V6 (`jk8`, Mind `dfd875c` with F17, yantrik-os 0f3e733): T6/T7 **0/2 again**
+
+F17 gave its extra step. The model kept calling the same `editor.new{text}`, 5 times per task, and never `save_as`, through every nudge. The OS's `new` result is correct (a tab holding the text, `bytes`, modified), but it ends *"(state omitted; `yos describe editor`, or re-run with --full)"*: command-line advice, and "re-run" reads as "call it again". **The OS session showed this line is not new** (printed since Sep 15, present when V4 passed), so it is a weak candidate for the regression. They fixed it anyway in yos-mcp (`for_a_mind()`: *"The action is done: do not repeat it to see the state."*). The Editor's listing changed only in `save_as(path, overwrite?)`. The honest reading: the same Mind code went 2/2 (V4), then 0/2 twice (V5, V6) on almost the same surface. That is mostly model variance, and my nudges gave a looping model too little to copy.
+
+## E.ARENA1-F18 / F19 — CLI advice rewritten; the repeat nudge gives the exact save call
+
+- **F18:** any `(state omitted; `yos describe X`, or re-run with --full)` line in a desktop result becomes *"(state trimmed; os_describe X shows all of it)"* before the model sees it. It is a stopgap until the yos-mcp fix reaches the VM.
+- **F19:** when an unsaved document's action is repeated and the request names a path (`~/…` or absolute), the nudge carries the exact next call: `os_act {"app": "editor", "action": "save_as", "args": {"path": "~/arena-x.txt"}}`, with the save that fits the app in use (`editor_save_as` on the shell, `save_as` on the editor). It no longer names the shell's `editor_save_as` to a model using the editor.
+
+Five mutants, each watched to fail. Workspace: 2072 passed, 0 failed.

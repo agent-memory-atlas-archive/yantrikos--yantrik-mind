@@ -16852,8 +16852,8 @@ mod desktop_consent_and_stall_wiring {
         )
         .await;
         assert!(
-            r.prompts.iter().any(|p| p.contains("the next step is to save it")),
-            "the repeated write was not pointed at the save"
+            r.prompts.iter().any(|p| p.contains(r#""action": "editor_save_as", "args": {"path": "~/x.txt"}"#)),
+            "the repeated write was not pointed at the exact save (F19)"
         );
         assert!(
             r.prompts.iter().any(|p| p.contains("the desktop says it is unsaved")),
@@ -17006,6 +17006,20 @@ mod desktop_consent_and_stall_wiring {
         let reached: Vec<String> = reached_acts(&r).into_iter().map(|(_, a)| a).collect();
         assert_eq!(reached, vec!["new".to_string(), "save_as".to_string()], "{:?}", r.reached);
         assert!(!r.reply.contains(crate::desktop::UNSAVED_NOTE), "{}", r.reply);
+    }
+
+    /// E.ARENA1-F18 through the loop: the model never sees yos-mcp's "re-run with --full".
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_model_never_reads_re_run_with_full() {
+        const EDITOR_253: &str = include_str!("../fixtures/desktop/describe_editor_253.txt");
+        let r = run(
+            vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))],
+            vec![EDITOR_253],
+            vec!["Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved\naccepted: True, settled: True\n(state omitted; `yos describe editor`, or re-run with --full)"],
+        )
+        .await;
+        assert!(r.prompts.iter().any(|p| p.contains("os_describe editor shows all of it")), "the line was not rewritten");
+        assert!(!r.prompts.iter().any(|p| p.contains("re-run with --full")), "the model was told to re-run");
     }
 
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you

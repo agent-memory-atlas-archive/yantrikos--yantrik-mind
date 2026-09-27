@@ -13334,7 +13334,7 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 // the first one is fatal.
                 eprintln!("[agent] step {step}: repeated {tool} call — nudging it onward");
                 // E.ARENA1-F12: a repeated desktop ACTION is sent to its next step, not to answer.
-                match desktop::repeated_action_note(&tool, unsaved_doc) {
+                match desktop::repeated_action_note(&tool, &args, unsaved_doc, desktop::requested_path(user_text).as_deref()) {
                     Some(note) => scratch.push_str(&format!("\n[{step}] {tool} -> {note}")),
                     None => scratch.push_str(&format!(
                     "
@@ -13361,7 +13361,7 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             // second pass. Re-serve the earlier result from the log rather than paying for it twice.
             if done_calls.contains(&call_sig) {
                 eprintln!("[agent] step {step}: {tool} already called with these args — reusing the work log");
-                match desktop::repeated_action_note(&tool, unsaved_doc) {
+                match desktop::repeated_action_note(&tool, &args, unsaved_doc, desktop::requested_path(user_text).as_deref()) {
                     Some(note) => scratch.push_str(&format!("\n[{step}] {tool} -> {note}")),
                     None => scratch.push_str(&format!(
                     "
@@ -13475,6 +13475,8 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             } else {
                 obs
             };
+            // E.ARENA1-F18: the desktop's CLI advice, in words a model can act on.
+            let obs = if tool.starts_with("mcp.yantrik-os.") { desktop::mcp_voice(&obs) } else { obs };
             if tool == desktop::DESCRIBE {
                 desktop::record_described(&args, &obs, &mut described);
             }

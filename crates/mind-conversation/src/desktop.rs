@@ -476,20 +476,51 @@ pub(crate) const UNSAVED_NOTE: &str =
 
 /// E.ARENA1-F12: the repeat nudge for a desktop ACTION. The loop's own nudge was written for fetch
 /// tasks and ends "otherwise answer" -- Reading E's T7 took that exit with the save still undone.
-pub(crate) fn repeated_action_note(tool: &str, unsaved: bool) -> Option<String> {
+pub(crate) fn repeated_action_note(
+    tool: &str,
+    args: &serde_json::Value,
+    unsaved: bool,
+    path: Option<&str>,
+) -> Option<String> {
     if tool != ACT {
         return None;
     }
-    Some(if unsaved {
-        "(that action already ran; its result is above. Do not repeat it. What you wrote is still \
-         only in the editor, unsaved: the next step is to save it with the path the request named \
-         (the shell's editor_save_as, or the editor's save_as), or say plainly that it is not saved.)"
-            .to_string()
-    } else {
-        "(that action already ran; its result is above. Do not repeat it. Take the NEXT step the \
-         request still needs, or say plainly what is left undone.)"
-            .to_string()
+    if !unsaved {
+        return Some(
+            "(that action already ran; its result is above. Do not repeat it. Take the NEXT step the \
+             request still needs, or say plainly what is left undone.)"
+                .to_string(),
+        );
+    }
+    // E.ARENA1-F19: the exact next call, when the request named where the file goes. On yantrik-os
+    // 0f3e733 the model repeated `editor.new{text}` three to five times through a nudge that only
+    // SAID "save it" -- and named the shell's `editor_save_as`, which #253 removed. The save that
+    // fits the app the model is using, with the request's own path, is something to copy.
+    let app = act_target(tool, args).map(|(a, _)| a).unwrap_or_default();
+    let save = if app == TWIN_HOST { "editor_save_as" } else { "save_as" };
+    Some(match path {
+        Some(p) => format!(
+            "(that action already ran; its result is above. Do not repeat it. What you wrote is still \
+             only in the editor, unsaved. The next call is: os_act {{\"app\": \"{app}\", \"action\": \
+             \"{save}\", \"args\": {{\"path\": \"{p}\"}}}} -- or say plainly that it is not saved.)"
+        ),
+        None => format!(
+            "(that action already ran; its result is above. Do not repeat it. What you wrote is still \
+             only in the editor, unsaved: the next step is `{app}.{save}` with the path the request \
+             named, or say plainly that it is not saved.)"
+        ),
     })
+}
+
+/// E.ARENA1-F19: the file path a request names -- `~/…` or an absolute path -- as the person wrote
+/// it, trailing punctuation dropped.
+pub(crate) fn requested_path(user_text: &str) -> Option<String> {
+    user_text
+        .split_whitespace()
+        .map(|w| w.trim_matches(|c: char| matches!(c, ',' | ';' | ':' | ')' | '(' | '"' | '\'' | '`')))
+        .map(|w| w.trim_end_matches('.'))
+        .find(|w| (w.starts_with("~/") || w.starts_with('/')) && w.len() > 2)
+        .map(str::to_string)
 }
 
 /// E.ARENA1-F14: a sensitive `set_content` whose own app opens a new document holding the text at a
@@ -621,6 +652,33 @@ pub(crate) fn desktop_sentence(desktop: bool) -> String {
     }
     " On this desktop a file's text is written with the `editor` app (open it with the shell's      open_app if it is not running; os_describe editor shows its actions); folders are the shell's      files_* actions; the calendar and notes are apps of their own."
         .to_string()
+}
+
+/// E.ARENA1-F18: the desktop's CLI advice, said the way an MCP caller can act on it.
+///
+/// yos-mcp's action results end "(state omitted; `yos describe editor`, or re-run with --full)" --
+/// advice for the `yos` command line. A model has no `--full`, and "re-run" reads as "call it
+/// again": on yantrik-os 0f3e733 the Mind called `editor.new{text}` three to five times per task and
+/// never `save_as`, through every nudge not to repeat it. The line becomes one a model can use.
+pub(crate) fn mcp_voice(obs: &str) -> String {
+    if !obs.contains("re-run with --full") {
+        return obs.to_string();
+    }
+    obs.lines()
+        .map(|l| {
+            let t = l.trim();
+            if t.starts_with("(state omitted;") && t.contains("re-run with --full") {
+                let app = t.split("`yos describe ").nth(1).and_then(|r| r.split('`').next());
+                match app {
+                    Some(a) => format!("(state trimmed; os_describe {a} shows all of it)"),
+                    None => "(state trimmed)".to_string(),
+                }
+            } else {
+                l.to_string()
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// E.ARENA1-F7: where home is on this machine. `shell.editor_save_as` gives `/home/user/notes.txt`
@@ -853,11 +911,32 @@ mod tests {
 
     #[test]
     fn a_repeated_desktop_action_is_sent_onward_not_to_answer() {
-        let saved = repeated_action_note(ACT, false).unwrap();
+        let editor = serde_json::json!({"app": "editor", "action": "new"});
+        let saved = repeated_action_note(ACT, &editor, false, None).unwrap();
         assert!(saved.contains("NEXT step") && !saved.contains("otherwise answer"), "{saved}");
-        let unsaved = repeated_action_note(ACT, true).unwrap();
-        assert!(unsaved.contains("save it"), "{unsaved}");
-        assert_eq!(repeated_action_note(DESCRIBE, true), None, "reads keep the loop's own nudge");
+        let unsaved = repeated_action_note(ACT, &editor, true, None).unwrap();
+        assert!(unsaved.contains("`editor.save_as`") && !unsaved.contains("editor_save_as"), "{unsaved}");
+        assert_eq!(repeated_action_note(DESCRIBE, &editor, true, None), None, "reads keep the loop's own nudge");
+    }
+
+    /// E.ARENA1-F19: with the request's path, the exact call -- for the app the model is using.
+    #[test]
+    fn a_repeat_with_an_unsaved_document_gets_the_exact_save_call() {
+        let editor = serde_json::json!({"app": "editor", "action": "new"});
+        let n = repeated_action_note(ACT, &editor, true, Some("~/arena-x.txt")).unwrap();
+        assert!(n.contains(r#"os_act {"app": "editor", "action": "save_as", "args": {"path": "~/arena-x.txt"}}"#), "{n}");
+        let shell = serde_json::json!({"app": "shell", "action": "editor_set_content"});
+        let n = repeated_action_note(ACT, &shell, true, Some("/home/y/a.txt")).unwrap();
+        assert!(n.contains(r#""action": "editor_save_as""#), "{n}");
+        assert_eq!(
+            requested_path("Create a text file at ~/arena-minjk8.txt containing exactly this line: hello").as_deref(),
+            Some("~/arena-minjk8.txt")
+        );
+        assert_eq!(
+            requested_path("Write the titles ... into a new file ~/arena-x-friday.txt, one title per line.").as_deref(),
+            Some("~/arena-x-friday.txt")
+        );
+        assert_eq!(requested_path("What is on my calendar on 25 September?"), None);
     }
 
     /// The real shell description: `apps` (~3,000 characters) sorts before `clock`, and the head
@@ -1032,6 +1111,17 @@ mod tests {
             lower_grade_twin("mcp.yantrik-os.os_describe", &serde_json::json!({"app": "editor"}), &d),
             None
         );
+    }
+
+    /// The line yos-mcp returned for `editor.new{text}` on 0f3e733, verbatim.
+    #[test]
+    fn cli_advice_is_said_the_way_a_model_can_act_on_it() {
+        let got = "Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved \u{b7} tab 2 of 2\naccepted: True, settled: True\n{\n  \"bytes\": 10\n}\n(state omitted; `yos describe editor`, or re-run with --full)";
+        let v = mcp_voice(got);
+        assert!(!v.contains("re-run") && !v.contains("--full"), "{v}");
+        assert!(v.ends_with("(state trimmed; os_describe editor shows all of it)"), "{v}");
+        assert!(v.starts_with("Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved"), "the first line is untouched");
+        assert_eq!(mcp_voice("Done \u{2014} Calendar"), "Done \u{2014} Calendar");
     }
 
     #[test]
