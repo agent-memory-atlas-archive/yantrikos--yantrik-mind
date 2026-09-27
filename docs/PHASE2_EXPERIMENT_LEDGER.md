@@ -9715,3 +9715,19 @@ The Mind's misses:
 - Any false claim is a finding.
 - R3 lower than R2 on T1–T7 means F23/F24 do not go to the candidate until it is understood.
 - Afterwards I read every failed cell's journal, as in R2, before naming any cause.
+
+## E.ARENA1-F25 — PREREG: the app catalogue reaches the model whole (and R3 amended before it runs)
+
+**Found by driving 282f69b on 520.** Asked to "Open the image viewer app", the Mind answered that no image viewer is listed. It is listed.
+- **The catalogue:** `os_apps` returns 2,494 characters (real yos-mcp capture, `os_apps_185b4c0.txt`). `image-viewer` starts at character 1,059.
+- **The cut:** the work log clips a successful non-description result at 900 characters, so the model sees only the first five openable apps (arcade, calendar, containers, download-manager, editor). Those are the same five it named in the calculator turn.
+- **Also invisible:** the desktop's own screens (files, settings, …), listed at the end.
+- **Why T1 still passed:** only because the model knows "notes" by name.
+
+**F25:** the catalogue is kept whole in the work log, up to 4,000 characters.
+
+**Kill criteria:**
+- The real capture's work-log entry names `image-viewer`, `terminal` and the "Screens of the desktop itself" line.
+- Other non-description results keep the 900 cut.
+
+**R3 amended, before it runs:** the Mind under test is the F25 commit (F23 + F24 + F25), not 282f69b. Everything else in R3's prereg stands.

@@ -228,6 +228,12 @@ pub(crate) fn forget_desktop_reads(done: &mut std::collections::HashSet<String>)
 /// The call that changes the desktop.
 pub(crate) const ACT: &str = "mcp.yantrik-os.os_act";
 
+/// E.ARENA1-F25: the desktop's app catalogue, and how much of it the work log keeps. It is ~2.5 KB
+/// on 185b4c0 and the work log cut it at 900: the model saw five openable apps and told a person
+/// the image viewer did not exist.
+pub(crate) const APPS: &str = "mcp.yantrik-os.os_apps";
+const APPS_BUDGET: usize = 4000;
+
 /// One action an app lists: its name, its permission grade, and its signature as the app wrote it.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub(crate) struct Listed {
@@ -903,6 +909,7 @@ pub(crate) fn work_log_entry(
     }
     .unwrap_or_else(|| {
         let obs = if ok && tool == ACT { result_before_state(obs) } else { obs.to_string() };
+        let head = if ok && tool == APPS { head.max(APPS_BUDGET) } else { head };
         obs.chars().take(head).collect::<String>()
     });
     format!("\n[{step}] {tool} -> {body}{note}")
@@ -1345,6 +1352,18 @@ mod tests {
         assert_eq!(moved.lines().count(), FILES_GO.lines().count(), "nothing dropped");
         assert!(moved.lines().last().unwrap().starts_with("state: {"));
         assert_eq!(work_log_entry(1, DESCRIBE, FILES_GO, true, 900, ""), format!("\n[1] {DESCRIBE} -> {}", FILES_GO.chars().take(900).collect::<String>()), "only actions are reordered");
+    }
+
+    /// E.ARENA1-F25 on real yos-mcp output (185b4c0): the whole catalogue reaches the work log.
+    #[test]
+    fn the_app_catalogue_reaches_the_model_whole() {
+        const APPS_185: &str = include_str!("../fixtures/desktop/os_apps_185b4c0.txt");
+        let e = work_log_entry(0, APPS, APPS_185, true, 900, "");
+        for name in ["image-viewer", "terminal", "presentation", "Screens of the desktop itself"] {
+            assert!(e.contains(name), "{name} missing from the work log");
+        }
+        let other = work_log_entry(0, "web_fetch", APPS_185, true, 900, "");
+        assert_eq!(other.chars().count(), format!("\n[0] web_fetch -> ").chars().count() + 900, "others keep the cut");
     }
 
     #[test]
