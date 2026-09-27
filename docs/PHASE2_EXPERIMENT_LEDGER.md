@@ -9944,3 +9944,35 @@ Nothing is deleted; that waits for the owner, together with question 6. yantrik-
 **Seen in the same hand-driven session** (not graded):
 - "Close the Notes app": `close_window {title: "Notes"}` was refused (no window matches) while Notes was open.
 - The Mind then told the person Notes was not open, contradicting the `os_apps` it had just read. A false negative on the Mind side; the OS side was asked about closing an app by name.
+
+## E.ASK1 — PREREG: personal questions only when the person is idle (the owner's instruction, 2026-09-27)
+
+**The owner, relayed by yantrik-os-f4:** "Even if I ask a question or asked to do something using yantrik mind, it asks for my personal details. That should not be the case. That should be in an idle time, not when something [is] ongoing."
+
+**Where the Mind asks during a conversation today:**
+1. **The piggyback.** `maybe_piggyback_ask` ends any reply to something that is not an instruction (a question, a statement) with "Btw — <personal question>", once per 4 h. F13 only exempted instructions.
+2. **The interest chain.** When an answer to an interest question is captured, onboarding immediately asks the next one ("Love that — noted. When's your wedding anniversary?…") and arms it. This is how VM 520's Mind still has `interest:unwind` pending.
+
+**The idle drive** (`loops.rs` ask) already requires:
+- no turn in flight;
+- the person quiet for `YM_ASK_IDLE_SECS`;
+- no other background pass;
+- presence, and not quiet hours;
+- no question pending.
+
+It does not check for a delegated background job in flight.
+
+**E.ASK1:**
+- The piggyback is removed, and replies never carry a personal question.
+- A captured interest answer is acknowledged ("Love that — noted.") without asking or arming the next; the idle drive asks it later.
+- The idle drive also waits while any background job is running.
+
+**Unchanged:**
+- First-run name → purpose (a one-time setup the person is in the middle of).
+- Face-merge and relation follow-ups (continuing a task the person started).
+- A message ending in "?" was already never an answer (`looks_like_non_answer`).
+
+**Kill criteria:**
+- A question turn ("what is on my calendar today?") ends with no "Btw".
+- A captured answer is acknowledged with no question and leaves nothing pending.
+- `prepare_ask` returns nothing while a background job runs.

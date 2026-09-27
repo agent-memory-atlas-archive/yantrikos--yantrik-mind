@@ -196,18 +196,15 @@ Which of these questions does that message ALREADY answer (fully or partly)? Out
                         }
                     }
                 }
-                // Chain only a question that is STILL genuinely unanswered.
+                // E.ASK1: acknowledge, and ask nothing more now. This used to chain the next
+                // personal question and arm it, so one answer kept a question pending for the next
+                // thing said -- the owner wants these only in idle time; the idle drive asks the
+                // next one later.
                 let covered = self.ask_covered().await;
-                match INTEREST_DIMS
-                    .iter()
-                    .find(|(k, _)| !covered.iter().any(|c| c == k))
-                {
-                    Some((nk, nq)) => {
-                        self.set_pending_slot(Some(&format!("interest:{nk}"))).await;
-                        format!("Love that — noted. {nq}")
-                    }
-                    None => "Got it — that gives me a real feel for you, and I'll put it to use."
-                        .to_string(),
+                if INTEREST_DIMS.iter().any(|(k, _)| !covered.iter().any(|c| c == k)) {
+                    "Love that — noted.".to_string()
+                } else {
+                    "Got it — that gives me a real feel for you, and I'll put it to use.".to_string()
                 }
             }
             s if s.starts_with("mergeface:") => {

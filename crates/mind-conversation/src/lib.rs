@@ -13839,18 +13839,11 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 }
             }
         }
-        // Curiosity in the flow of talk: occasionally end the reply with ONE get-to-know-you
-        // question (primary user only — the interest profile is his). E.ARENA1-F13: never on a
-        // reply to an INSTRUCTION. On VM 520 a refusal to "continue with the town model building"
-        // ended "Btw — what do you enjoy doing?", and that question, left pending, swallowed the
-        // next instruction as a hobby.
-        if matches!(&id.viewer(), mind_types::Scope::Private(v) if v == mind_types::PRIMARY)
-            && !looks_like_a_task_request(user_text)
-        {
-            if let Some(q) = self.maybe_piggyback_ask().await {
-                ans.push_str(&format!("\n\nBtw — {q}"));
-            }
-        }
+        // E.ASK1: a reply never carries a get-to-know-you question. It used to ("Btw — …", on any
+        // reply to something that was not an instruction), and the owner asked for it to stop:
+        // "Even if I ask a question or asked to do something … it asks for my personal details.
+        // That should be in an idle time, not when something [is] ongoing." Those questions come
+        // only from the idle drive (loops.rs), which waits for the person to be quiet.
         apply_denied_write_correction(&mut ans, &denied_mutations);
         // E.ARENA1-F12: a turn that ended with its document unsaved says so, whatever compose wrote.
         if unsaved_doc {

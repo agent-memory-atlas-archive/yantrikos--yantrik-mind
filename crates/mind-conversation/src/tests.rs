@@ -17339,9 +17339,9 @@ mod desktop_consent_and_stall_wiring {
         assert!(!outside.prompts.iter().any(|p| p.contains("Earlier on this desktop")), "a hand-over leaked outside its turn");
     }
 
-    /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
-    /// question; the same turn asked as a QUESTION still gets one, so the gate is the
-    /// instruction and not the feature being off.
+    /// E.ARENA1-F13, VM 520 turn 3, and E.ASK1: a reply ends without a get-to-know-you question --
+    /// to an instruction (F13), and now to a question too, on the owner's word ("it asks for my
+    /// personal details … that should be in an idle time").
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn no_get_to_know_you_question_after_an_instruction() {
         let steps = || vec![
@@ -17352,7 +17352,14 @@ mod desktop_consent_and_stall_wiring {
         assert!(task.reply.contains(COMPOSED), "the turn was meant to end in compose: {}", task.reply);
         assert!(!task.reply.contains("Btw \u{2014}"), "a question was tacked onto a task reply: {}", task.reply);
         let chat = run_with("what is on my calendar today?", steps(), vec![EDITOR], vec!["UNUSED"]).await;
-        assert!(chat.reply.contains("Btw \u{2014}"), "positive control: a question turn may still ask one: {}", chat.reply);
+        assert!(!chat.reply.contains("Btw \u{2014}"), "E.ASK1: a question turn asks nothing back either: {}", chat.reply);
+        // E.ASK1: and the idle drive waits while something the person started is still running.
+        let mem: Arc<dyn MemoryFacade> = Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap());
+        let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+        let conv = ConversationEngine::new(mem, pool, "YM");
+        assert!(conv.prepare_ask().await.is_some(), "positive control: an idle mind with nothing known asks");
+        conv.bg_jobs.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        assert!(conv.prepare_ask().await.is_none(), "asked while a background job was running");
     }
 }
 

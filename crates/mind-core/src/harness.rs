@@ -530,6 +530,21 @@ mod handover_tests {
         assert!(filed.is_none(), "an interest was stored: {filed:?}");
     }
 
+    /// E.ASK1: an answer to a get-to-know-you question is acknowledged, and nothing more is asked or
+    /// left pending -- the next question waits for idle time.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn an_answer_is_acknowledged_without_the_next_question() {
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let pool = InferencePool::new(Arc::new(ScriptedLLM::new("{}")) as Arc<dyn LLMBackend>, 1);
+        let conv = Arc::new(crate::engine(&mem, pool));
+        mem.profile_set("pending_onboard", "interest:hobbies").await.unwrap();
+        let reply = take_turn(&mem, &conv, "I love hiking and playing chess on weekends.", None).await;
+        assert_eq!(reply, "Love that — noted.");
+        let pending = mem.profile_get("pending_onboard").await.unwrap().unwrap_or_default();
+        assert!(pending.is_empty(), "a question was left pending: {pending}");
+        assert!(mem.profile_get("interest_hobbies").await.unwrap().is_some(), "the answer itself was kept");
+    }
+
     /// yantrik-os #394 as it really arrived (VM 520, OS ce8c715, turn 377, after a switch from
     /// Hermes): the hand-over in `context.handover.text`, next to `machine`.
     #[test]

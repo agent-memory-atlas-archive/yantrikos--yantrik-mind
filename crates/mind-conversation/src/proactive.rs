@@ -1330,6 +1330,11 @@ impl super::ConversationEngine {
         if self.pending_slot().await.is_some() {
             return None;
         }
+        // E.ASK1: nor while something the person started is still running -- a personal question
+        // belongs to idle time, and a delegated job in flight is not idle.
+        if self.bg_jobs.load(std::sync::atomic::Ordering::Relaxed) > 0 {
+            return None;
+        }
         let name = self.memory.profile_get("name").await.ok().flatten();
         if name.is_none() {
             return Some(AskCandidate {
@@ -1454,50 +1459,6 @@ impl super::ConversationEngine {
             .memory
             .profile_set("pending_onboard", v.unwrap_or(""))
             .await;
-    }
-
-    /// Curiosity as NORMAL conversation: occasionally close a reply with one get-to-know-you
-    /// question instead of quarantining all asks behind idle gates. Paced (YM_ASK_PIGGYBACK_SECS,
-    /// default 4h), skipped while a question is already pending. Most of the "how much do you
-    /// actually know about me" gaps close here — in the flow of talk, not in scheduled pings.
-    pub(crate) async fn maybe_piggyback_ask(&self) -> Option<String> {
-        if std::env::var("YM_ASK_PIGGYBACK")
-            .map(|v| v == "off")
-            .unwrap_or(false)
-        {
-            return None;
-        }
-        if self.pending_slot().await.is_some() {
-            return None;
-        }
-        let period_ms: i64 = std::env::var("YM_ASK_PIGGYBACK_SECS")
-            .ok()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(14_400)
-            * 1000;
-        let now = chrono::Utc::now().timestamp_millis();
-        let last: i64 = self
-            .memory
-            .profile_get("ask_piggyback_ms")
-            .await
-            .ok()
-            .flatten()
-            .and_then(|s| s.parse().ok())
-            .unwrap_or(0);
-        if now - last < period_ms {
-            return None;
-        }
-        let covered = self.ask_covered().await;
-        let (key, q) = INTEREST_DIMS
-            .iter()
-            .find(|(k, _)| !covered.iter().any(|c| c == k))?;
-        self.set_pending_slot(Some(&format!("interest:{key}")))
-            .await;
-        let _ = self
-            .memory
-            .profile_set("ask_piggyback_ms", &now.to_string())
-            .await;
-        Some((*q).to_string())
     }
 
     /// Which interest dimensions the ask-drive has already covered (persisted, so it never re-asks).
