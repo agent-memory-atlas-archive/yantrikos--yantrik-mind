@@ -9731,3 +9731,39 @@ The Mind's misses:
 - Other non-description results keep the 900 cut.
 
 **R3 amended, before it runs:** the Mind under test is the F25 commit (F23 + F24 + F25), not 282f69b. Everything else in R3's prereg stands.
+
+## E.ARENA1-F26 — PREREG: the same change with one more field is a repeat (written while R3 runs; not deployed during it)
+
+**The shape, three times.** The model re-sends an action that already succeeded, with its arguments varied only by adding (or dropping) an optional field. That defeats the exact-match repeat guard.
+- **R2 rep 3, T3:** `add_event {date,duration_min,time,title}`, then the same plus `reminder_minutes: 10`. That value is copied from the first call's own result (`"reminder_minutes": 10`). The result was two events.
+- **R2 rep 3, T4:** `update_own_event {id,time}`, then `{date,id,time}`.
+- **R3 rep 1, T3:** as R2's T3, word for word, and T4's false claim followed again. The model had seen `"added": "Arena minyk1", "on": "2026-09-30 15:00"` both times.
+
+**F26:** a desktop action is not sent when an earlier action this turn had the same app and action, **ran** (not refused, not "nothing was run"), and has non-empty arguments that are a subset of the new call's, or a superset. The model is answered with the earlier result's first line and told the change is already made.
+- Different values (another time, another title) are a different change and are sent.
+- An empty earlier argument set matches nothing, so `new` then `new{text}` is untouched.
+
+**Kill criteria:**
+- The real T3 sequence reaches the desktop once.
+- `update_own_event {id,time}` then `{id,date,time}` reaches it once.
+- A second event at another time reaches it.
+- A call that was refused or "not run" can still be re-sent with more fields (F22 intact).
+
+**R3 result** (mind 79ae685 = F23+F24+F25, OS 185b4c0, R2's arena file md5 1a46eab1; gates passed; rows md5 5a166903…):
+
+| | Pass | Wilson 95% | False claims | T5 | Per rep |
+|---|---|---|---|---|---|
+| R2 (cc196e8) | 15/21 | 50–86% | 1 | 0/3 | 6, 5, 4 |
+| **R3 (79ae685)** | **20/21** | **77–99%** | 1 | **3/3** | 7, 7, 6 (T3 of rep 1 counted a pass despite a duplicate) |
+| other minds in R2 | 21/21 | 85–100% | 0 | 3/3 | |
+
+**Verdict under the prereg:** the intervals overlap, so this is formally "no difference shown". The prediction held: T5 went from 0/3 to 3/3 and T1 stayed at 3/3. The Mind's interval now overlaps the other four minds'.
+
+**The one miss** is T4 in rep 1, a false claim again. It came from T3's duplicate, word for word R2's shape: `add_event`, then the same call plus `reminder_minutes: 10`. F26 (prereg above) targets it; it is built and not yet measured.
+
+**A grader weakness,** for the next series and not changed mid-series: T3 passes when the event exists at least once, so a duplicate passes T3 and fails T4. Exact counts belong in the grader (see "synthetic cases share your misconception").
+
+**F26 built:**
+- `same_change_again` sits in the pre-send chain after F20. `made` records only actions that ran.
+- Tests: 2 new, on R3's verbatim T3 arguments and the real add_event capture. Full suite 2088 passed, 0 failed.
+- Five mutants, all watched to fail: guard off; nothing recorded; refusals recorded (F22 broken); superset only; empty-arguments match.

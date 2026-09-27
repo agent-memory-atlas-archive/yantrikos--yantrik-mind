@@ -17246,6 +17246,28 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(looks(&r), looks(&settled) + 1, "exactly one extra look, and only when unsettled");
     }
 
+    /// E.ARENA1-F26 through the loop, on R3's T3 arguments and the real add_event result (185b4c0):
+    /// the re-add with `reminder_minutes` never reaches the desktop; a refused call still can (F22).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_change_already_made_is_not_made_again_with_one_more_field() {
+        const ADDED: &str = include_str!("../fixtures/desktop/act_add_event_185b4c0.txt");
+        let add = |extra: bool| {
+            let mut a = serde_json::json!({"date": "2026-09-30", "duration_min": 30, "time": "15:00", "title": "Arena minyk1"});
+            if extra {
+                a["reminder_minutes"] = serde_json::json!(10);
+            }
+            Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "calendar", "action": "add_event", "args": a}))
+        };
+        let prompt = "Add an event called 'Arena minyk1' to my calendar on 30 September 2026 at 15:00 for 30 minutes.";
+        let r = run_with(prompt, vec![add(false), add(true)], vec![SHELL, SHELL], vec![ADDED, ADDED]).await;
+        let adds = reached_acts(&r).iter().filter(|(_, a)| a == "add_event").count();
+        assert_eq!(adds, 1, "{:?}", r.reached);
+        assert!(r.prompts.iter().any(|p| p.contains("calendar.add_event already ran this turn")), "the model was not told");
+        let refused = run_with(prompt, vec![add(false), add(true)], vec![SHELL, SHELL], vec![NOT_OPEN, ADDED]).await;
+        let adds = reached_acts(&refused).iter().filter(|(_, a)| a == "add_event").count();
+        assert_eq!(adds, 2, "a call that was not run is not a change made: {:?}", refused.reached);
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
     /// question; the same turn asked as a QUESTION still gets one, so the gate is the
     /// instruction and not the feature being off.

@@ -586,6 +586,55 @@ pub(crate) fn settled_since(obs: &str, seen: &str) -> String {
     )
 }
 
+/// E.ARENA1-F26: an action's own arguments as a map. A bare string (`"args": "hello"`, as models
+/// send `editor.new`) is one unnamed field.
+fn inner_args(args: &serde_json::Value) -> serde_json::Map<String, serde_json::Value> {
+    match args.get("args") {
+        Some(serde_json::Value::Object(m)) => m.clone(),
+        Some(serde_json::Value::String(t)) => {
+            let mut m = serde_json::Map::new();
+            m.insert(String::new(), serde_json::Value::String(t.clone()));
+            m
+        }
+        _ => serde_json::Map::new(),
+    }
+}
+
+/// E.ARENA1-F26: the same change as one that already RAN this turn, re-sent with a field added or
+/// dropped -- which the exact repeat guard cannot see. R2 and R3, T3: `add_event {date, duration_min,
+/// time, title}` succeeded ("added": ..., "on": "2026-09-30 15:00"), and the model sent it again
+/// with `reminder_minutes: 10`, copied from that result: two events, and T4's false claim after.
+/// `made` holds each action that ran, with its result's first line. Different VALUES are a
+/// different change and pass; an earlier call with no arguments matches nothing.
+pub(crate) fn same_change_again(
+    tool: &str,
+    args: &serde_json::Value,
+    made: &[(serde_json::Value, String)],
+) -> Option<String> {
+    let (app, action) = act_target(tool, args)?;
+    let now = inner_args(args);
+    if now.is_empty() {
+        return None;
+    }
+    let within = |a: &serde_json::Map<String, serde_json::Value>, b: &serde_json::Map<String, serde_json::Value>| {
+        a.iter().all(|(k, v)| b.get(k) == Some(v))
+    };
+    made.iter().find_map(|(prev, head)| {
+        let (p_app, p_action) = act_target(ACT, prev)?;
+        let before = inner_args(prev);
+        (p_app == app && p_action == action && !before.is_empty()
+            && (within(&before, &now) || within(&now, &before)))
+        .then(|| {
+            format!(
+                "({app}.{action} already ran this turn with the same details, and it worked: {}. That \
+                 change is made -- do not make it again. Take the next step the request still needs, or \
+                 answer.)",
+                head.trim()
+            )
+        })
+    })
+}
+
 /// E.ARENA1-F21: the path a request asks to have MADE -- created, written, saved -- or `None`.
 /// Every "is the work done" signal before this one was scraped from the first line of a desktop
 /// result; this one asks the world. A request to delete, move or rename a path is not asking for
@@ -1364,6 +1413,27 @@ mod tests {
         }
         let other = work_log_entry(0, "web_fetch", APPS_185, true, 900, "");
         assert_eq!(other.chars().count(), format!("\n[0] web_fetch -> ").chars().count() + 900, "others keep the cut");
+    }
+
+    /// E.ARENA1-F26: R3's T3 sequence, verbatim arguments; and what must still pass.
+    #[test]
+    fn the_same_change_with_one_more_field_is_a_repeat() {
+        let first = serde_json::json!({"action": "add_event", "app": "calendar", "args": {"date": "2026-09-30", "duration_min": 30, "time": "15:00", "title": "Arena minyk1"}});
+        let again = serde_json::json!({"action": "add_event", "app": "calendar", "args": {"date": "2026-09-30", "duration_min": 30, "reminder_minutes": 10, "time": "15:00", "title": "Arena minyk1"}});
+        let made = vec![(first.clone(), "Done \u{2014} Calendar \u{2014} September 2026, 3 things on day 25".to_string())];
+        let n = same_change_again(ACT, &again, &made).expect("a superset of what ran is the same change");
+        assert!(n.contains("calendar.add_event already ran") && n.contains("3 things on day 25"), "{n}");
+        let later = serde_json::json!({"action": "add_event", "app": "calendar", "args": {"date": "2026-09-30", "duration_min": 30, "time": "16:00", "title": "Arena minyk1"}});
+        assert_eq!(same_change_again(ACT, &later, &made), None, "another time is another event");
+        let moved = serde_json::json!({"action": "update_own_event", "app": "calendar", "args": {"id": "01a0e225", "time": "16:30"}});
+        let moved_again = serde_json::json!({"action": "update_own_event", "app": "calendar", "args": {"date": "2026-09-30", "id": "01a0e225", "time": "16:30"}});
+        assert!(same_change_again(ACT, &moved_again, &[(moved.clone(), "Done".into())]).is_some());
+        assert!(same_change_again(ACT, &moved, &[(moved_again, "Done".into())]).is_some(), "a subset too");
+        let empty = serde_json::json!({"action": "new", "app": "editor"});
+        let text = serde_json::json!({"action": "new", "app": "editor", "args": "hello"});
+        assert_eq!(same_change_again(ACT, &text, &[(empty, "Done".into())]), None, "no arguments matches nothing");
+        assert_eq!(same_change_again(ACT, &again, &[]), None, "nothing ran yet");
+        assert_eq!(same_change_again(DESCRIBE, &again, &made), None);
     }
 
     #[test]

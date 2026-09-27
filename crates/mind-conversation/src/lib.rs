@@ -12712,6 +12712,8 @@ Open reminders you're carrying for them:",
         let mut unsaved_nudged = false;
         // E.ARENA1-F21: the one reminder that the path the request asked for is still missing.
         let mut goal_nudged = false;
+        // E.ARENA1-F26: each desktop action that RAN this turn, with its result's first line.
+        let mut made: Vec<(serde_json::Value, String)> = Vec::new();
         // E.LOOP1 MEASUREMENT, not a bound. Two diagnoses of the 29-step runaway were wrong, and
         // the third candidate — a per-tool retrieval budget — must not be a third guess. This
         // records what a turn ACTUALLY did so the budget can be chosen from turns rather than from
@@ -13457,6 +13459,10 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     true,
                     desktop::requested_path(user_text).as_deref(),
                 )
+            } else if let Some(note) = desktop::same_change_again(&tool, &args, &made) {
+                // E.ARENA1-F26: a change already made, re-sent with a field more or less.
+                eprintln!("[agent] step {step}: {tool} is a change already made this turn \u{2014} not sent");
+                Some(note)
             } else {
                 // E.ARENA1-F15: an app acted on without a describe this turn has its grades read
                 // first -- for the loop, not the model -- so the checks below can see them.
@@ -13556,6 +13562,9 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             let ran = outcome == crate::tool_outcome::Outcome::Ok && !desktop::nothing_was_run(&obs);
             if desktop::retry_after_failure(&tool, ran) {
                 done_calls.remove(&call_sig);
+            }
+            if sent && ran && tool == desktop::ACT {
+                made.push((args.clone(), obs.lines().next().unwrap_or("").to_string()));
             }
             if outcome == crate::tool_outcome::Outcome::Denied
                 && self
