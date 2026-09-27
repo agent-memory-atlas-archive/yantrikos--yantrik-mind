@@ -574,8 +574,19 @@ def claims_success(reply):
 
 # ── the run ───────────────────────────────────────────────────────────────────────────────────
 
+# The model's provider refused the call, not the mind the task: a quota, a rate limit. R4 lost 103 of
+# 180 cells to one shared account's session limit, all graded as the minds' fails (2026-09-27).
+PROVIDER = re.compile(r"\b429\b|usage limit|rate[- ]limit|quota", re.I)
+# Two provider refusals in a row end the run, as a lock does: a dead key fails every cell after it.
+PROVIDER_STOP = 2
+# Why the run stopped early, when it did; the reps loop reads it.
+STOP = None
+
+
 def run(minds, task_ids, out_path, run_id):
+    global STOP
     rows = []
+    provider_streak = 0
     original = active_mind()
     try:
         for mind in minds:
@@ -625,6 +636,23 @@ def run(minds, task_ids, out_path, run_id):
                             f.write(json.dumps(row) + "\n")
                         print(f"  {mind:9} {tid}  VOID(busy)", flush=True)
                         continue
+                if PROVIDER.search(reply):
+                    # The mind was never really asked: void, never a fail.
+                    row = {"run": run_id, "mind": mind, "task": tid, "pass": False,
+                           "void": "provider", "finished": finished, "seconds": secs,
+                           "false_claim": False, "evidence": PROVIDER.search(reply).group(0),
+                           "ask": text, "reply": reply[-1500:]}
+                    rows.append(row)
+                    with open(out_path, "a") as f:
+                        f.write(json.dumps(row) + "\n")
+                    print(f"  {mind:9} {tid}  VOID(provider)", flush=True)
+                    provider_streak += 1
+                    if provider_streak >= PROVIDER_STOP:
+                        STOP = f"the model provider refused {provider_streak} cells in a row (quota or rate limit)"
+                        print(f"!! {STOP}; stopping the run", flush=True)
+                        return rows
+                    continue
+                provider_streak = 0
                 if not finished and tid in ASKING_IS_RIGHT:
                     shell = describe("shell") or {}
                     card = [q for q in shell.get("pending_questions") or []
@@ -717,7 +745,8 @@ def summary(rows, minds, task_ids):
     """Every rep together, per mind and task: passes over judged cells with the Wilson interval,
     false claims, the median seconds, and the void cells by reason -- shown, never counted."""
     print()
-    print(f"{'mind':10} {'task':5} {'pass':>7}  {'95% interval':>13}  {'false-claims':>12}  {'median-s':>8}  void")
+    print(f"{'mind':10} {'task':5} {'pass':>7}  {'95% interval':>13}  {'false-claims':>12}  {'median-s':>8}  "
+          f"{'no-answer':>9}  void")
     for m in minds:
         for t in task_ids:
             cells = [x for x in rows if x["mind"] == m and x["task"] == t]
@@ -733,8 +762,11 @@ def summary(rows, minds, task_ids):
                 if x.get("void"):
                     voids[x["void"]] = voids.get(x["void"], 0) + 1
             void = ", ".join(f"{why} {c}" for why, c in sorted(voids.items())) or "-"
+            # A bare "(no answer)" is graded (it cannot be told from a real non-answer), but counted,
+            # since R4's Pi cells were probably the provider too and did not say so.
+            blank = sum(x.get("reply", "").strip() in ("", "(no answer)") for x in judged)
             print(f"{m:10} {t:5} {k:>3}/{n:<3}  {low:5.0%} - {high:4.0%}  "
-                  f"{sum(x['false_claim'] for x in judged):>12}  {med:>8}  {void}")
+                  f"{sum(x['false_claim'] for x in judged):>12}  {med:>8}  {blank:>9}  {void}")
 
 
 def preflight(task_ids):
@@ -896,6 +928,9 @@ def main():
             return 1
     rows = []
     for rep in range(max(1, a.reps)):
+        if STOP:
+            print(f"!! stopping after {rep} of {a.reps} reps -- {STOP}", flush=True)
+            break
         if desktop_locked():
             print(f"!! the desktop is locked; stopping after {rep} of {a.reps} reps -- someone has to sign in",
                   flush=True)
