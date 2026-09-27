@@ -9882,3 +9882,9 @@ The Mind's misses:
 - **T12 (count):** it had the answer (3), wrote it into a new editor tab, and never saved it through the exact-save nudges. F12's note said so honestly, so there was no false claim.
 
 **What R4 cannot say:** anything about the Mind against the others on T8–T12. The next reading needs a model quota that lasts 180 cells, or fewer cells per run. That is the owner's call: the account is his.
+
+**Mind gate for yantrik-os 738-gc0b853d: PASS**, on the standard used for 185b4c0 (the Mind's round-1 cells, nothing attributable to the OS).
+- Round 1 of R4: T1–T7 7/7 and T8–T12 2/5, with none of the Mind's 12 cells touched by the quota. The Mind ran before the 429.
+- No reach refusals. The three hard-task misses are traced to the Mind.
+
+The arena gained provider voids (d4e39e5: a 429 / usage limit / rate limit / quota reply voids the cell, and two in a row stop the run) and September stepping (9e51aee). Known limit: a genuine reply that mentions "quota" would be voided. None of T1–T12 asks about one.
