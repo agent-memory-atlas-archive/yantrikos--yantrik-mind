@@ -9695,3 +9695,23 @@ The Mind's misses:
 - The calendar captures are unchanged in what they show.
 - A description (which has `act:` lines) is still condensed as before.
 - A result without a `state:` line is byte-identical to before.
+
+## E.ARENA1-R3 — PREREG: the Mind alone, T1–T7 × 3, after F23 + F24 (2026-09-27)
+
+**Held fixed:**
+- VM 520 on OS 185b4c0, with no LAN build until R3 reports (yantrik-os #387 waits).
+- The **same arena file as R2**, `~/harness_arena.py` md5 1a46eab1. The merged arena-hard file is not used: its reset deletes the arena's own events, and a less cluttered calendar would be confounded with the Mind's change.
+- `--minds mind --tasks T1..T7 --reps 3 --keep-events`, with the gates first.
+
+**Changed:** the Mind, from cc196e8 to 282f69b (F23: look again when unsettled; F24: result before state).
+
+**Predictions:**
+- T5 improves from R2's 0/3, since both fixes sit on its path.
+- T1 stays at 3/3.
+- T3, T4 and T7: **no prediction**. Their R2 causes are not truncation (see F24) and remain unexplained.
+
+**What would count:**
+- Overall, the Mind's k/21 is compared with R2's 15/21. At this n only a large difference is visible. Overlapping intervals will be called "no difference shown".
+- Any false claim is a finding.
+- R3 lower than R2 on T1–T7 means F23/F24 do not go to the candidate until it is understood.
+- Afterwards I read every failed cell's journal, as in R2, before naming any cause.
