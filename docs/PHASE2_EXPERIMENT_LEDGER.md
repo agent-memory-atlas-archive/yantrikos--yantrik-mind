@@ -9585,3 +9585,18 @@ Also, a harness note: the reset deletes `~/arena-*`, which unlinked a log I had 
 - Full suite 2082 passed, 0 failed. This includes the #384 guard: two real `state:` captures leave the unsaved scrape working, checked by two mutants.
 
 **R1 amended before B1 ran:** B1 is the F22 commit (F20 + F21 + F22), not 209d766. B0 stands as recorded.
+
+**R1 B1 result** (mind cc196e8 = F20+F21+F22, same OS and setup; the gates passed first):
+
+| Task | Pass | 95% interval | False claims | Voids | Median |
+|---|---|---|---|---|---|
+| T6 | 10/10 | 72–100% | 0 | 0 | 10.3 s |
+| T7 | 10/10 | 72–100% | 0 | 0 | 8.2 s |
+
+**Verdict under the prereg:** no regression and no difference shown. T6 was 9/10 in B0 and 10/10 in B1; the intervals overlap.
+
+**Attribution:** the journal for B1 shows no F21 nudge and no "nothing was run" refusal. The ten T6 passes did not need F21 or F22, so this reading credits neither. Only B0's gpj trace (for F22) and the unit and loop tests show what they do.
+
+Both builds pass T6/T7 near the ceiling on this OS build. More reps of these two tasks will not separate them. The next useful reading is a harder task set, or the full seven-task arena against the other harnesses.
+
+A harness slip, mine: my B1 waiter on 520 embedded `import harness_arena` in its own command line, so `pgrep -f "harness_[a]rena"` matched the waiter and it waited on itself. The run was unaffected; the waiters were killed by PID. (Rows: `~/.yantrik-arena-R1-B0.jsonl` md5 9d8d0bab…, `~/.yantrik-arena-R1-B1.jsonl` md5 87920b59….)
