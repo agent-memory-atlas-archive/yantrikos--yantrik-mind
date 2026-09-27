@@ -1,0 +1,13 @@
+Calendar — September 2026, 3 things on day 25
+accepted: True, settled: True
+revision: 2006df5755b54ba7
+state: {"days_with_events":[{"day":22,"events":1},{"day":23,"events":2},{"day":25,"events":3},{"day":30,"events":27}],"events_this_month":33,"month":"September 2026","month_number":9,"notice":"","selected_day":25,"today":"2026-09-27 Sunday","view":"month","year":2026,"you":"capture_f24.py"}
+{
+  "day": 25,
+  "events": [
+    "Perception API review",
+    "Lunch with Sam",
+    "Dentist"
+  ]
+}
+(The state: line has the app's small fields; os_describe calendar shows the rest. The action is done: do not repeat it to see them.)

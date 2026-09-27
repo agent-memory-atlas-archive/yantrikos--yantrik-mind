@@ -1,0 +1,12 @@
+Calendar — September 2026, 3 things on day 25
+accepted: True, settled: True
+revision: 491e406cbd4213de
+state: {"days_with_events":[{"day":22,"events":1},{"day":23,"events":2},{"day":25,"events":3},{"day":30,"events":28}],"events_this_month":34,"month":"September 2026","month_number":9,"notice":"","selected_day":25,"today":"2026-09-27 Sunday","view":"month","year":2026,"you":"capture_f24.py"}
+{
+  "added": "Arena f24probe",
+  "all_day": false,
+  "id": "01a0e232-628b-7043-9db7-c1f3496e186c",
+  "on": "2026-09-30 15:00",
+  "reminder_minutes": 10
+}
+(The state: line has the app's small fields; os_describe calendar shows the rest. The action is done: do not repeat it to see them.)

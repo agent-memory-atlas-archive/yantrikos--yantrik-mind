@@ -865,6 +865,26 @@ pub(crate) fn bound_mcp_output(out: &str, on_this_computer: bool) -> String {
     out.chars().take(MCP_OUTPUT_CAP).collect()
 }
 
+/// E.ARENA1-F24: a desktop action's `state:` line moved after everything else.
+///
+/// yantrik-os #384 puts one line of the app's state between `revision:` and the result object. The
+/// shell's is over a thousand characters, so on 185b4c0 `files_go`'s result -- where it went, that
+/// it is loading -- began at character 1,330 of a work-log entry cut at 900: the Mind never saw what
+/// a shell action did. The result is what the action did; the state is context. Nothing is dropped
+/// here, only reordered, and a result without a state line comes back unchanged.
+pub(crate) fn result_before_state(obs: &str) -> String {
+    let (state, rest): (Vec<&str>, Vec<&str>) = obs.lines().partition(|l| l.starts_with("state: {"));
+    if state.is_empty() {
+        return obs.to_string();
+    }
+    let mut out = rest.join("\n");
+    for l in state {
+        out.push('\n');
+        out.push_str(l);
+    }
+    out
+}
+
 /// One work-log line for a tool result: a desktop description condensed so its actions survive,
 /// anything else clipped to `head` as before. The agent loop's only writer of successful results, so
 /// the condensing is tested here rather than trusted to a line inside a 1,500-line loop.
@@ -881,7 +901,10 @@ pub(crate) fn work_log_entry(
     } else {
         None
     }
-    .unwrap_or_else(|| obs.chars().take(head).collect::<String>());
+    .unwrap_or_else(|| {
+        let obs = if ok && tool == ACT { result_before_state(obs) } else { obs.to_string() };
+        obs.chars().take(head).collect::<String>()
+    });
     format!("\n[{step}] {tool} -> {body}{note}")
 }
 
@@ -1299,6 +1322,29 @@ mod tests {
         assert!(later.contains("Looked again 1.5 s later: Yantrik \u{2014} desktop screen, 1 windows open"), "{later}");
         let blind = settled_since(got, "");
         assert!(blind.contains("Look again with os_describe"), "{blind}");
+    }
+
+    /// E.ARENA1-F24 on real yos-mcp output from 185b4c0: the shell's result survives the cut; the
+    /// calendar's, which already fitted, still does; nothing without a state line changes.
+    #[test]
+    fn a_desktop_action_result_is_read_before_its_state() {
+        const FILES_GO: &str = include_str!("../fixtures/desktop/act_files_go_185b4c0.txt");
+        const ADD_EVENT: &str = include_str!("../fixtures/desktop/act_add_event_185b4c0.txt");
+        const SELECT_25: &str = include_str!("../fixtures/desktop/act_select_day_25_185b4c0.txt");
+        let go = work_log_entry(3, ACT, FILES_GO, true, 900, "");
+        assert!(go.contains("\"requested_path\": \"/home/yantrik\""), "{go}");
+        assert!(go.contains("\"loading\": true"), "{go}");
+        assert!(go.contains("accepted: True, settled: False"), "{go}");
+        let add = work_log_entry(1, ACT, ADD_EVENT, true, 900, "");
+        assert!(add.contains("\"added\": \"Arena f24probe\"") && add.contains("\"on\": \"2026-09-30 15:00\""), "{add}");
+        let sel = work_log_entry(1, ACT, SELECT_25, true, 900, "");
+        assert!(sel.contains("\"Perception API review\"") && sel.contains("\"Dentist\""), "{sel}");
+        let plain = "Done \u{2014} Notes\naccepted: True, settled: True\n{\n  \"ok\": true\n}";
+        assert_eq!(result_before_state(plain), plain);
+        let moved = result_before_state(FILES_GO);
+        assert_eq!(moved.lines().count(), FILES_GO.lines().count(), "nothing dropped");
+        assert!(moved.lines().last().unwrap().starts_with("state: {"));
+        assert_eq!(work_log_entry(1, DESCRIBE, FILES_GO, true, 900, ""), format!("\n[1] {DESCRIBE} -> {}", FILES_GO.chars().take(900).collect::<String>()), "only actions are reordered");
     }
 
     #[test]

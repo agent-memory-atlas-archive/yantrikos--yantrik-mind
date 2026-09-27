@@ -9679,3 +9679,19 @@ The Mind's misses:
 4. **T7 rep 3.** It repeated `select_day 25` and tried the unconfigured coder, and never wrote the file.
 
 **Open:** why the Mind got worse by rep (6, 5, 4). Candidate, **untested**: the arena keeps its events (`--keep-events`), day 30 grew to 23 events, and the calendar's description grew with it. Reproduce before claiming.
+
+**Ownership, from yantrik-os-f4:** callers are named by their script, and arena cleanup deletes only harness_arena.py's own events. The caveat "may also delete minds' events" is withdrawn.
+
+## E.ARENA1-F24 — PREREG: a desktop action's result comes before its state
+
+**The R2 hypothesis, tested against real yos-mcp output** (`capture_f24.py` on 520, speaking MCP to `/opt/yantrik/bin/yos-mcp` as a mind does; fixtures `act_*_185b4c0.txt`). The hypothesis was that #384's `state:` line pushes the result object past the work log's 900-character cut.
+- **Calendar: FALSIFIED.** `add_event` is 681 characters and `select_day 25` is 627, and both result objects are inside 900. The model saw `"added": "Arena f24probe" … "on": "2026-09-30 15:00"` and still added the event again, so T3's duplicate and T7's stall are **not** truncation. Their cause stays open.
+- **Shell: CONFIRMED.** `files_go` is 1,678 characters, and its result object (`"now": {"path": "~", "loading": true …}, "requested_path"`) starts at character 1,330. The shell's `state:` line alone is over a thousand characters. On 185b4c0 the Mind has never seen what a shell action did. T5 and the weather hand-turn go through shell actions.
+
+**F24:** in the work log, a desktop action's lines keep their order, except that the `state:` line moves to the end. The first line, the accepted/settled line, the result object and the desktop's advice all come before the cut; the state keeps whatever room is left.
+
+**Kill criteria:**
+- The real `files_go` capture's result object is in the work-log entry.
+- The calendar captures are unchanged in what they show.
+- A description (which has `act:` lines) is still condensed as before.
+- A result without a `state:` line is byte-identical to before.
