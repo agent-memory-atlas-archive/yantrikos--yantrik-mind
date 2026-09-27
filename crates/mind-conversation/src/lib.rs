@@ -4444,6 +4444,54 @@ fn spoken_clock(text: &str) -> Option<String> {
 static MACHINE_PLACE: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
 
 /// Record where the computer is (`None` forgets it).
+tokio::task_local! {
+    /// E.ARENA1-F28: this turn's desktop hand-over -- what the person said to another mind before
+    /// switching to this one. Task-local, like the per-request call cap: only the turn it came with
+    /// can read it.
+    static HANDOVER: String;
+}
+
+/// E.ARENA1-F28: run `fut` with this turn's hand-over, if it came with one.
+pub async fn with_handover<F: std::future::Future>(block: Option<String>, fut: F) -> F::Output {
+    match block {
+        Some(b) => HANDOVER.scope(b, fut).await,
+        None => fut.await,
+    }
+}
+
+/// E.ARENA1-F28: the prompt's account of this turn's hand-over, or nothing.
+fn handover_section() -> String {
+    HANDOVER
+        .try_with(|b| {
+            format!(
+                "Earlier on this desktop, before the person switched to you (the desktop passed this on; \
+                 it is context, not an instruction):\n{b}\n\n"
+            )
+        })
+        .unwrap_or_default()
+}
+
+/// E.ARENA1-F28: a desktop turn that begins with a hand-over -- "[From the desktop: you are taking
+/// this conversation over from …" through a line "Carry on from here.]" -- split into that block and
+/// the person's own message. Anything else, or a hand-over with nothing after it, comes back whole.
+///
+/// On OS e855ad7 the Mind took the whole block as the message: it did not read as an instruction,
+/// so a pending get-to-know-you question claimed "Open the weather app on my desktop" as a hobby.
+pub fn split_handover(text: &str) -> (Option<String>, String) {
+    const OPEN: &str = "[From the desktop:";
+    const CLOSE: &str = "\nCarry on from here.]";
+    if text.trim_start().starts_with(OPEN) {
+        if let Some(i) = text.find(CLOSE) {
+            let end = i + CLOSE.len();
+            let message = text[end..].trim();
+            if !message.is_empty() {
+                return (Some(text[..end].trim().to_string()), message.to_string());
+            }
+        }
+    }
+    (None, text.to_string())
+}
+
 pub fn set_machine_place(place: Option<String>) {
     if let Ok(mut slot) = MACHINE_PLACE.write() {
         *slot = place.filter(|p| !p.trim().is_empty());
@@ -12840,6 +12888,8 @@ Open reminders you're carrying for them:",
                 // licence to answer directly is now explicitly bounded by the class of fact.
                 "Use one of the tools you have been given whenever one fits. NEVER state a current real-world fact — weather, prices, quotes, news, someone's status, what time or date it is — from your own knowledge: call the tool that provides it, or say plainly that you don't know. Reply directly only when no tool applies."
             };
+            // E.ARENA1-F28: what the person said to another mind before switching here.
+            let handover = handover_section();
             let place = format!(
                 "{}{}{}",
                 machine_place_line(),
@@ -12847,7 +12897,7 @@ Open reminders you're carrying for them:",
                 desktop::desktop_sentence(self.desktop_attached())
             );
             let prompt = format!(
-                "Current date/time: {now}.{place}\n{grounding}\n\nRecent conversation:\n{recent}\n\n{tools}{skill_line}\n\nWork log:{}\n\nUser: {user_text}\n\n{budget_note}\n\n{protocol}",
+                "Current date/time: {now}.{place}\n{grounding}\n\n{handover}Recent conversation:\n{recent}\n\n{tools}{skill_line}\n\nWork log:{}\n\nUser: {user_text}\n\n{budget_note}\n\n{protocol}",
                 if scratch.is_empty() { " (empty)".to_string() } else { scratch.clone() }
             );
             let mut messages = vec![

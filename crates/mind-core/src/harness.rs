@@ -43,7 +43,6 @@ use std::time::Duration;
 use mind_conversation::ConversationEngine;
 use mind_memory::MemoryHandle;
 
-#[cfg(unix)]
 use crate::{handle_line_as, Outcome};
 
 /// What a person types to choose this mind, and what the picker shows.
@@ -355,7 +354,7 @@ async fn serve(
         let answer = {
             let mem = mem.clone();
             let conv = conv.clone();
-            let mut thinking = tokio::spawn(async move { think(&mem, &conv, &text).await });
+            let mut thinking = tokio::spawn(async move { take_turn(&mem, &conv, &text).await });
             // A turn can outlast the desktop's 90-second presence window, and this loop does not
             // poll while it thinks: "Write a note titled Shopping…" took 93 seconds and the
             // desktop reported "mind stopped responding" to a mind that was mid-answer. An empty
@@ -486,6 +485,30 @@ mod attach_tests {
 }
 
 #[cfg(test)]
+mod handover_tests {
+    use super::*;
+    use mind_inference::{InferencePool, ScriptedLLM};
+    use mind_types::MemoryFacade;
+    use yantrik_ml::LLMBackend;
+
+    /// E.ARENA1-F28 end to end, on the real turn from OS e855ad7: a get-to-know-you question is
+    /// pending, the desktop hands the Mind a conversation from Hermes with an instruction after it.
+    /// Before the fix the whole block was the answer: "Love that — noted", and an interest was filed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_handover_is_not_taken_as_the_answer_to_a_pending_question() {
+        const TURN: &str = include_str!("../../mind-conversation/fixtures/desktop/handover_e855ad7.txt");
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+        let conv = Arc::new(crate::engine(&mem, pool));
+        mem.profile_set("pending_onboard", "interest:hobbies").await.unwrap();
+        let reply = take_turn(&mem, &conv, TURN).await;
+        assert!(!reply.contains("noted"), "the hand-over was filed as a hobby: {reply}");
+        let filed = mem.profile_get("interest_hobbies").await.unwrap();
+        assert!(filed.is_none(), "an interest was stored: {filed:?}");
+    }
+}
+
+#[cfg(test)]
 mod machine_place_tests {
     use super::machine_place;
 
@@ -558,7 +581,18 @@ async fn set_up(
 }
 
 /// One turn, through the same door the terminal and the phone use.
-#[cfg(unix)]
+/// E.ARENA1-F28: one desktop turn. A hand-over from another mind is context for the model, never
+/// the person's message: the onboarding gate and every heuristic read only what they typed.
+#[cfg_attr(not(unix), allow(dead_code))]
+async fn take_turn(mem: &MemoryHandle, conv: &Arc<ConversationEngine>, text: &str) -> String {
+    let (handover, message) = mind_conversation::split_handover(text);
+    if let Some(b) = &handover {
+        eprintln!("[harness] a hand-over from another mind ({} chars) kept as context", b.chars().count());
+    }
+    mind_conversation::with_handover(handover, think(mem, conv, &message)).await
+}
+
+#[cfg_attr(not(unix), allow(dead_code))]
 async fn think(mem: &MemoryHandle, conv: &Arc<ConversationEngine>, text: &str) -> String {
     let member = std::env::var("YM_HARNESS_SCOPE")
         .map(|v| v.trim().eq_ignore_ascii_case("member"))

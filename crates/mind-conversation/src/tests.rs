@@ -17316,6 +17316,29 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(adds, 2, "a call that was not run is not a change made: {:?}", refused.reached);
     }
 
+    /// E.ARENA1-F28 on the real turn from OS e855ad7: the hand-over splits off, the message is the
+    /// person's own; the loop prompt carries the hand-over only inside its scope.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_desktop_handover_is_context_and_the_message_is_the_persons() {
+        const TURN: &str = include_str!("../fixtures/desktop/handover_e855ad7.txt");
+        let (block, message) = crate::split_handover(TURN);
+        let block = block.expect("the real hand-over is recognised");
+        assert_eq!(message, "Open the weather app on my desktop.");
+        assert!(block.starts_with("[From the desktop: you are taking this conversation over from Hermes Agent."));
+        assert!(block.ends_with("Carry on from here.]"));
+        assert_eq!(crate::split_handover("Open the weather app."), (None, "Open the weather app.".to_string()));
+        let bare = "[From the desktop: you are taking this conversation over from Hermes Agent. it was:\n- The person: hi\nCarry on from here.]\n  ";
+        assert_eq!(crate::split_handover(bare), (None, bare.to_string()), "nothing after it: left whole");
+        let inside = crate::with_handover(
+            Some(block.clone()),
+            run(vec![], vec![SHELL], vec!["Done"]),
+        )
+        .await;
+        assert!(inside.prompts.iter().any(|p| p.contains("Earlier on this desktop") && p.contains("arena-her9oh-missing.txt")), "the model never saw the hand-over");
+        let outside = run(vec![], vec![SHELL], vec!["Done"]).await;
+        assert!(!outside.prompts.iter().any(|p| p.contains("Earlier on this desktop")), "a hand-over leaked outside its turn");
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
     /// question; the same turn asked as a QUESTION still gets one, so the gate is the
     /// instruction and not the feature being off.

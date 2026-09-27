@@ -9888,3 +9888,33 @@ The Mind's misses:
 - No reach refusals. The three hard-task misses are traced to the Mind.
 
 The arena gained provider voids (d4e39e5: a 429 / usage limit / rate limit / quota reply voids the cell, and two in a row stop the run) and September stepping (9e51aee). Known limit: a genuine reply that mentions "quota" would be voided. None of T1–T12 asks about one.
+
+## E.ARENA1-F28 — PREREG: a desktop hand-over is context, not the person's message
+
+**Found driving mind 747a7a3 on OS e855ad7 (VM 520), ungraded.**
+1. The active mind was Hermes (left there by yantrik-os-f4's screenshots). I switched to the Mind with `use_harness`, the way the arena does, and asked "Open the weather app on my desktop."
+2. The desktop delivered the turn as a hand-over: "[From the desktop: you are taking this conversation over from Hermes Agent. The person expects you to know what was said; it was: - The person: … Carry on from here.]", then my sentence (2,261 characters in all; fixture `handover_e855ad7.txt`).
+3. The Mind treated the whole block as the person's message. It did not read as an instruction, so the pending get-to-know-you slot claimed it: "Love that — noted. What's your go-to way to unwind after a long day?", in 2.6 s, with no tool.
+4. `onboarding.rs` stores such an answer as an `interest_*` profile entry and a "told" belief. A false personal fact was probably planted; to be listed, not assumed.
+
+The same text would also have fed F21's path check a path from the hand-over (`~/arena-her9oh-count.txt`), and every other heuristic that reads the user's text.
+
+**F28:** the harness splits a turn that begins with "[From the desktop:" at its "\nCarry on from here.]" line.
+- Only what follows goes to `think()` as the person's message: the onboarding gate, task detection, F21 and the rest read only that.
+- The hand-over is carried to the agent loop's prompt for that turn as "Earlier on this desktop …", through a task-local like the per-request cap, so no other channel's turn can see it.
+- A turn with no hand-over, or a hand-over with nothing after it, is unchanged.
+
+**Kill criteria:**
+- The real turn splits into its block and "Open the weather app on my desktop."
+- The loop prompt carries the block only inside the scope.
+- A plain turn is byte-identical.
+- An empty message leaves the text whole.
+
+**F28 result:**
+- `split_handover` and `with_handover` (a task-local) live in mind-conversation. The harness's new `take_turn` splits the turn and runs `think` on the person's message only.
+- `think` and `take_turn` now compile on every platform. Only the socket code stays unix-gated, so the end-to-end test runs here.
+- **End-to-end test on the real turn:** with `interest:hobbies` pending, the reply is not "noted" and no `interest_hobbies` is stored.
+- **Its mutant reproduces the live failure word for word:** passing the raw text gives "Love that — noted. When's your wedding anniversary?…".
+- **Mutants, all watched to fail:** raw text to `think`; the prompt never shows the hand-over; never splits.
+- F24's test also checks the real #388-order capture (c0b853d), where the result is in view.
+- Full suite 2092 passed, 0 failed.

@@ -1403,6 +1403,11 @@ mod tests {
         assert!(go.contains("\"requested_path\": \"/home/yantrik\""), "{go}");
         assert!(go.contains("\"loading\": true"), "{go}");
         assert!(go.contains("accepted: True, settled: False"), "{go}");
+        // yantrik-os #388 (e855ad7's predecessor c0b853d) prints the result before the state: F24 is a
+        // no-op there, and the result is still in view.
+        const FILES_GO_388: &str = include_str!("../fixtures/desktop/act_files_go_c0b853d.txt");
+        let go388 = work_log_entry(3, ACT, FILES_GO_388, true, 900, "");
+        assert!(go388.contains("\"requested_path\""), "{go388}");
         let add = work_log_entry(1, ACT, ADD_EVENT, true, 900, "");
         assert!(add.contains("\"added\": \"Arena f24probe\"") && add.contains("\"on\": \"2026-09-30 15:00\""), "{add}");
         let sel = work_log_entry(1, ACT, SELECT_25, true, 900, "");

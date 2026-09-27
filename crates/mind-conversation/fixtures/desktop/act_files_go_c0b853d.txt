@@ -1,0 +1,17 @@
+Yantrik — files screen, 1 windows open, calendar, email and notes not running
+accepted: True, settled: False
+revision: 4428452ab492f3de
+{
+  "now": {
+    "entries": 20,
+    "free_space": "6.7 GiB available",
+    "loading": true,
+    "notice": "",
+    "operation_busy": false,
+    "path": "~",
+    "view": "grid"
+  },
+  "requested_path": "/home/yantrik"
+}
+state: {"active_project":"","agent_jobs":[],"battery":null,"bond":"Partner-in-Crime","bond_interactions":526,"bond_loaded":true,"bond_score":5.0,"clock":{"date":"2026-09-27","time":"05:13","utc_offset":"-05:00","weekday":"Sunday","zone":"America/Chicago"},"companion_online":true,"companion_status":"idle","cpu_percent":2,"date":"Sun 27 Sep","disk":"24.6 GB / 31.3 GB","disk_percent":78,"do_not_disturb":false,"failed_launches":[],"incognito":false,"installer":null,"launcher":{"open":false},"lens":{"chat":true,"open":false,"text":""},"memories":684,"memory":"5.0 GB / 7.8 GB","memory_percent":64,"mind_audit_recent":[],"mind_menu":{"close_with":"","open":false,"showing":null},"mind_mode":{"bypass_expires_in_secs":null,"bypass_until_restart":false,"ceiling":"sensitive","means":"It gets on with things. You are still asked about the destructive ones.","mode":"auto","previous":"auto","session_rules":[]},"mind_view":{"apps":["image"],"display":"wayland-1","minds_open_apps_here":true,"running":true,"unavailable":null},"network":{"connection":"Wired connection 1","online":true,"type":"ethernet"},"pending_approvals":[],"pending_questions":[],"pending_suggestions":0,"screen":"files","screen_id":8}
+(The state: line has the app's small fields; os_describe shell shows the rest. The action is done: do not repeat it to see them.)
