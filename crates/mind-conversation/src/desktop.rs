@@ -533,6 +533,51 @@ pub(crate) fn requested_path(user_text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// E.ARENA1-F21: the path a request asks to have MADE -- created, written, saved -- or `None`.
+/// Every "is the work done" signal before this one was scraped from the first line of a desktop
+/// result; this one asks the world. A request to delete, move or rename a path is not asking for
+/// it to exist, so it has no goal here.
+pub(crate) fn goal_path(user_text: &str) -> Option<String> {
+    const MAKES: [&str; 12] = [
+        "create", "creates", "write", "writes", "written", "save", "saved", "saves", "make", "put",
+        "store", "export",
+    ];
+    const UNMAKES: [&str; 7] = ["delete", "remove", "move", "rename", "erase", "trash", "rm"];
+    let lower = user_text.to_lowercase();
+    let words: Vec<&str> = lower.split(|c: char| !c.is_alphanumeric()).collect();
+    if words.iter().any(|w| UNMAKES.contains(w)) || !words.iter().any(|w| MAKES.contains(w)) {
+        return None;
+    }
+    requested_path(user_text)
+}
+
+/// E.ARENA1-F21: where a requested path is on this machine -- `~/` against `home`. `None` when
+/// that cannot be said (no home), so nothing is claimed about a file the Mind cannot look for.
+pub(crate) fn on_this_machine(path: &str, home: Option<&str>) -> Option<std::path::PathBuf> {
+    match path.strip_prefix("~/") {
+        Some(rest) => {
+            let home = home.map(str::trim).filter(|h| !h.is_empty())?;
+            Some(std::path::Path::new(home).join(rest))
+        }
+        None if path.starts_with('/') => Some(std::path::PathBuf::from(path)),
+        None => None,
+    }
+}
+
+/// E.ARENA1-F21: said once, before a turn ends with the requested path still missing.
+pub(crate) fn goal_nudge(step: usize, path: &str) -> String {
+    format!(
+        "\n[{step}] (the request asked for {path}, and nothing is at {path} yet -- it was not \
+         created. Make it now (for text: the editor's `new` with the text, then `save_as` with that \
+         path), or say plainly that it was not made.)"
+    )
+}
+
+/// E.ARENA1-F21: appended, by code, when a turn ends with the requested path still missing.
+pub(crate) fn goal_missing_note(path: &str) -> String {
+    format!("(Nothing is at {path} yet \u{2014} it was not created.)")
+}
+
 /// E.ARENA1-F14: a sensitive `set_content` whose own app opens a new document holding the text at a
 /// lower grade -- yantrik-os #253's `editor.new(text?)`, standard: "Open a new tab ... empty or
 /// holding the text given. Nothing is written to disk until `save_as`". A new tab replaces nothing,
@@ -1144,6 +1189,32 @@ mod tests {
         assert!(v.ends_with("(state trimmed; os_describe editor shows all of it)"), "{v}");
         assert!(v.starts_with("Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved"), "the first line is untouched");
         assert_eq!(mcp_voice("Done \u{2014} Calendar"), "Done \u{2014} Calendar");
+    }
+
+    /// E.ARENA1-F21: which requests have a path to check, and where it is.
+    #[test]
+    fn a_goal_is_a_path_the_request_asks_to_have_made() {
+        let t7 = "Write the titles of my calendar events on Friday into a new file ~/arena-x-friday.txt, one title per line.";
+        assert_eq!(goal_path(t7).as_deref(), Some("~/arena-x-friday.txt"));
+        assert_eq!(
+            goal_path("Create a text file at ~/arena-minjk8.txt containing exactly this line: hello").as_deref(),
+            Some("~/arena-minjk8.txt")
+        );
+        assert_eq!(goal_path("Save it as /tmp/notes.txt").as_deref(), Some("/tmp/notes.txt"));
+        assert_eq!(goal_path("Delete ~/old.txt"), None, "a delete is not asking for the file");
+        assert_eq!(goal_path("Move ~/a.txt somewhere tidy"), None);
+        assert_eq!(goal_path("Rename ~/a.txt, then write a note"), None);
+        assert_eq!(goal_path("What is in ~/notes.txt?"), None, "a question makes nothing");
+        assert_eq!(goal_path("Write me a poem about rain"), None, "no path, no goal");
+        assert_eq!(
+            on_this_machine("~/a.txt", Some("/home/yantrik")),
+            Some(std::path::PathBuf::from("/home/yantrik").join("a.txt"))
+        );
+        assert_eq!(on_this_machine("~/a.txt", None), None, "no home: nothing to look at");
+        assert_eq!(on_this_machine("~/a.txt", Some("  ")), None);
+        assert_eq!(on_this_machine("/tmp/a.txt", None), Some(std::path::PathBuf::from("/tmp/a.txt")));
+        assert!(goal_missing_note("~/a.txt").contains("~/a.txt"));
+        assert!(goal_nudge(3, "~/a.txt").contains("save_as"));
     }
 
     #[test]

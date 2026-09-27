@@ -5669,6 +5669,10 @@ pub struct ConversationEngine {
     event_tally: Arc<Mutex<std::collections::HashMap<String, u64>>>,
     /// Last fast-twitch evaluation, epoch ms — debounce so an event storm runs ONE evaluation.
     twitch_last: Arc<Mutex<i64>>,
+    /// The person's home folder on this machine (`HOME` at construction). E.ARENA1-F7 says it to
+    /// the model; E.ARENA1-F21 resolves a requested `~/` path against it. A field so a test can
+    /// point it at a folder it controls.
+    home_dir: Option<String>,
 }
 
 impl ConversationEngine {
@@ -5766,6 +5770,7 @@ impl ConversationEngine {
             bg_jobs: Arc::new(AtomicUsize::new(0)),
             event_tally: Arc::new(Mutex::new(std::collections::HashMap::new())),
             twitch_last: Arc::new(Mutex::new(0)),
+            home_dir: std::env::var("HOME").ok(),
         }
     }
 
@@ -6967,6 +6972,24 @@ impl ConversationEngine {
     pub fn with_mcp(mut self, hub: Arc<mind_tools::McpHub>) -> Self {
         self.mcp = Some(hub);
         self
+    }
+
+    /// Where `~` is, for a test that must not depend on the machine running it.
+    #[cfg(test)]
+    pub(crate) fn with_home_dir(mut self, home: Option<String>) -> Self {
+        self.home_dir = home;
+        self
+    }
+
+    /// E.ARENA1-F21: the path the request asked to have made, when nothing is there. Only with a
+    /// desktop attached: its harness socket is local, so the Mind shares the machine and can look.
+    fn missing_goal(&self, user_text: &str) -> Option<String> {
+        if !self.desktop_attached() {
+            return None;
+        }
+        let asked = desktop::goal_path(user_text)?;
+        let at = desktop::on_this_machine(&asked, self.home_dir.as_deref())?;
+        (!at.exists()).then_some(asked)
     }
 
     /// Load the plugin manifest (enable/disable + security overlay) from a JSON file and remember the
@@ -12687,6 +12710,8 @@ Open reminders you're carrying for them:",
         // E.ARENA1-F12: a document written this turn is still unsaved (the desktop's own word).
         let mut unsaved_doc = false;
         let mut unsaved_nudged = false;
+        // E.ARENA1-F21: the one reminder that the path the request asked for is still missing.
+        let mut goal_nudged = false;
         // E.LOOP1 MEASUREMENT, not a bound. Two diagnoses of the 29-step runaway were wrong, and
         // the third candidate — a per-tool retrieval budget — must not be a third guess. This
         // records what a turn ACTUALLY did so the budget can be chosen from turns rather than from
@@ -12816,7 +12841,7 @@ Open reminders you're carrying for them:",
             let place = format!(
                 "{}{}{}",
                 machine_place_line(),
-                desktop::home_sentence(self.desktop_attached(), std::env::var("HOME").ok().as_deref()),
+                desktop::home_sentence(self.desktop_attached(), self.home_dir.as_deref()),
                 desktop::desktop_sentence(self.desktop_attached())
             );
             let prompt = format!(
@@ -13141,6 +13166,15 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                         continue;
                     }
                     a = format!("{a}\n\n{}", desktop::UNSAVED_NOTE);
+                } else if let Some(path) = self.missing_goal(user_text) {
+                    // E.ARENA1-F21: the world, not a result's first line, says the file is not there.
+                    if !goal_nudged {
+                        goal_nudged = true;
+                        eprintln!("[agent] step {step}: answering with {path} still missing \u{2014} asking for it");
+                        scratch.push_str(&desktop::goal_nudge(step, &path));
+                        continue;
+                    }
+                    a = format!("{a}\n\n{}", desktop::goal_missing_note(&path));
                 }
                 if let Some(clause) = unattempted_side_effect(user_text, &cost.calls) {
                     // E.ARENA1-F5: a turn that never looked at the desktop is sent to look, not
@@ -13748,6 +13782,9 @@ The answer travels inside a JSON string, so newlines and quotes must be         
         // E.ARENA1-F12: a turn that ended with its document unsaved says so, whatever compose wrote.
         if unsaved_doc {
             ans = format!("{ans}\n\n{}", desktop::UNSAVED_NOTE);
+        } else if let Some(path) = self.missing_goal(user_text) {
+            // E.ARENA1-F21: the requested path is still missing, whatever compose wrote.
+            ans = format!("{ans}\n\n{}", desktop::goal_missing_note(&path));
         }
         let _ = self
             .memory

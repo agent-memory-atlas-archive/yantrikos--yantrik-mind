@@ -9493,3 +9493,40 @@ T6 passed twice (14.4 s, 10.2 s): each time the model repeated `new` twice, got 
 ## E.ARENA1-F20 — another `new` while the document is unsaved is answered with the save
 
 While a document written this turn is unsaved, another `new` (or the shell's `editor_new`) on it, with any text, is not sent. It is answered with F19's exact save call instead. That covers V9's T7 shape, where the text differed only by a trailing newline. Loop test replays it (one tab opened, then `save_as` reaches the desktop). Two mutants, each watched to fail, including *any new is caught, saved or not*, which a saved document's test catches. Workspace: 2074 passed, 0 failed.
+
+## E.ARENA1-F21 — PREREG: the goal is checked against the world before the turn ends (agreed split with yantrik-os-f4, 2026-09-27)
+
+yantrik-os-f4 surveyed the loop read-only and found the weak spot: every "is the work done" signal (F12/F17/F19/F20) is scraped from the first line of a result. The agreed split:
+- **The OS side** adds a typed `state:` line to `yos act` results, and `--reps` with Wilson intervals to the arena (on a branch I review).
+- **The Mind side is mine:** a typed per-app record, "open obligations", barren by state, and **F21, a goal check before the turn ends.**
+
+**F21:** when a request asks to create, write, save or make something at a path it names (`~/…` or absolute), and does not ask to delete, remove, move or rename it, the loop checks the filesystem (the Mind runs on the desktop's own machine) before the turn ends. If nothing is at the path:
+- first, one nudge naming the path and that it is still missing;
+- if the turn still ends without it, a line added by code: *(Nothing is at <path> yet — it was not created.)*
+
+It does not add a second note where F12's unsaved note already says the same.
+
+**Kill criteria:**
+- a request whose path exists never hears either message;
+- a request that names no path never does;
+- a delete, move or rename request never does;
+- the note is added at most once, and never beside F12's.
+
+**F21 result (built):**
+- `desktop::goal_path` takes the path from a create/write/save request, and returns nothing for delete, move or rename. `on_this_machine` resolves `~/` against the engine's `home_dir` (HOME at construction, injectable in tests).
+- `ConversationEngine::missing_goal` checks only with a desktop attached.
+- In-loop answer exit: one nudge, then the note. Compose: the note.
+- Both give way to F12 when the document is unsaved.
+
+**Tests:** 5 new; the full suite is 2079 passed, 0 failed.
+
+**Mutants** (every one watched to fail):
+- `exists` inverted: 3 tests fail.
+- in-loop nudge removed; in-loop note removed; compose note removed (the new compose test).
+- F21 beside F12: the kill-criteria test.
+- desktop gate removed: survived at first. It is killed by the no-desktop test added for it.
+- UNMAKES ignored; MAKES ignored; empty home accepted.
+
+The loop tests' default home is `None`, so no other test depends on the machine that runs it.
+
+**Not yet shown live:** whether the model makes the file after the nudge. That is for the `--reps` baseline on T6/T7.

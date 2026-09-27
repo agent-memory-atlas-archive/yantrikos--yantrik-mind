@@ -16587,6 +16587,18 @@ mod desktop_consent_and_stall_wiring {
     }
 
     async fn run_with(prompt: &str, steps: Vec<Step>, describes: Vec<&str>, acts: Vec<&str>) -> Run {
+        run_at(prompt, None, steps, describes, acts).await
+    }
+
+    /// `home` is where `~` is. `None` (every other test here): a `~/` path cannot be looked for,
+    /// so E.ARENA1-F21 stays out of tests about something else, whatever machine runs them.
+    async fn run_at(
+        prompt: &str,
+        home: Option<String>,
+        steps: Vec<Step>,
+        describes: Vec<&str>,
+        acts: Vec<&str>,
+    ) -> Run {
         let seen = Arc::new(StdMutex::new(Vec::new()));
         let timeouts = Arc::new(StdMutex::new(Vec::new()));
         let script = Script {
@@ -16620,7 +16632,7 @@ mod desktop_consent_and_stall_wiring {
             |v: Vec<&str>| v.into_iter().map(|s| Ok(s.to_string())).collect::<Vec<_>>();
         hub.add_scripted_tool(tool("os_describe"), script_of(describes)).unwrap();
         hub.add_scripted_tool(tool("os_act"), script_of(acts)).unwrap();
-        let conv = ConversationEngine::new(memarc, pool, "YM").with_mcp(hub.clone());
+        let conv = ConversationEngine::new(memarc, pool, "YM").with_mcp(hub.clone()).with_home_dir(home);
         let reply = conv
             .agent_loop_for_eval(prompt, &TurnIdentity::primary())
             .await
@@ -17044,6 +17056,111 @@ mod desktop_consent_and_stall_wiring {
         let reached: Vec<String> = reached_acts(&r).into_iter().map(|(_, a)| a).collect();
         assert_eq!(reached, vec!["new".to_string(), "save_as".to_string()], "{:?}", r.reached);
         assert!(r.prompts.iter().any(|p| p.contains(r#""action": "save_as", "args": {"path": "~/x.txt"}"#)), "no exact save offered");
+    }
+
+    /// A fresh, empty folder to stand in for home.
+    fn fresh_home(tag: &str) -> std::path::PathBuf {
+        let d = std::env::temp_dir().join(format!("ym-f21-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        d
+    }
+
+    /// E.ARENA1-F21: the desktop said "saved", but nothing is at the path the request named. The
+    /// answer is asked for it once, then the reply says so -- in the model's own words or not.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_requested_file_that_is_not_there_is_asked_for_then_said() {
+        let home = fresh_home("missing");
+        let r = run_at(
+            "Create a text file at ~/x.txt containing hello",
+            Some(home.to_string_lossy().into_owned()),
+            vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))],
+            vec![SHELL],
+            vec!["Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(r.prompts.iter().any(|p| p.contains("nothing is at ~/x.txt yet")), "the answer was not asked for the file");
+        assert_eq!(
+            r.reply.matches("Nothing is at ~/x.txt yet").count(),
+            1,
+            "said once: {}",
+            r.reply
+        );
+    }
+
+    /// F21 at compose: the model repeats a "saved" write until the loop gives up and composes; the
+    /// file is still not there, and the composed reply says so.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_requested_file_that_is_not_there_is_said_when_compose_ends_the_turn() {
+        let home = fresh_home("compose");
+        let w = || Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"));
+        let r = run_at(
+            "Create a text file at ~/x.txt containing hello",
+            Some(home.to_string_lossy().into_owned()),
+            vec![w(), w(), w(), w(), w(), w()],
+            vec![SHELL],
+            vec!["Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(r.reply.contains(COMPOSED), "the turn was meant to end in compose: {}", r.reply);
+        assert!(r.reply.contains("Nothing is at ~/x.txt yet"), "{}", r.reply);
+    }
+
+    /// F21 needs the desktop: its socket is what says the Mind shares the machine with the path.
+    /// Without one (a Telegram mind on its own box) the request's `~` is not the Mind's to look in.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn without_a_desktop_a_requested_path_is_not_looked_for() {
+        let home = fresh_home("nodesk");
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let script: Arc<dyn LLMBackend> = Arc::new(Script {
+            at: AtomicUsize::new(0),
+            steps: vec![],
+            seen: seen.clone(),
+            timeouts: Arc::new(StdMutex::new(Vec::new())),
+        });
+        let pool = InferencePool::new(Arc::clone(&script), 1)
+            .with_provider("script")
+            .with_private_backend(script, "script");
+        let mem: Arc<dyn MemoryFacade> = Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap());
+        let conv = ConversationEngine::new(mem, pool, "YM")
+            .with_home_dir(Some(home.to_string_lossy().into_owned()));
+        let reply = conv
+            .agent_loop_for_eval("Create a text file at ~/x.txt containing hello", &TurnIdentity::primary())
+            .await
+            .unwrap_or_else(|e| format!("ERR {e}"));
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(!reply.contains("Nothing is at"), "{reply}");
+        assert!(!seen.lock().unwrap().iter().any(|p| p.contains("it was not created")), "nudged without a desktop");
+    }
+
+    /// F21's kill criteria: a file that is there, a request that names no path, a delete, and a
+    /// document F12 already says is unsaved -- none of them hears F21.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_file_that_is_there_or_no_goal_hears_nothing_from_f21() {
+        let home = fresh_home("there");
+        std::fs::write(home.join("x.txt"), "hello\n").unwrap();
+        let h = || Some(home.to_string_lossy().into_owned());
+        let wrote = || vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))];
+        let saved = || vec!["Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"];
+        let there = run_at("Create a text file at ~/x.txt containing hello", h(), wrote(), vec![SHELL], saved()).await;
+        let no_path = run_at("Write me a line that says hello", h(), wrote(), vec![SHELL], saved()).await;
+        let delete = run_at("Delete ~/gone.txt", h(), wrote(), vec![SHELL], saved()).await;
+        let unsaved = run_at(
+            "Create a text file at ~/y.txt containing hello",
+            h(),
+            wrote(),
+            vec![SHELL],
+            vec!["Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved \u{b7} tab 2 of 2"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&home);
+        for (name, r) in [("there", &there), ("no path", &no_path), ("delete", &delete), ("unsaved", &unsaved)] {
+            assert!(!r.reply.contains("Nothing is at"), "{name}: {}", r.reply);
+            assert!(!r.prompts.iter().any(|p| p.contains("it was not created")), "{name} was nudged");
+        }
+        assert!(unsaved.reply.contains(crate::desktop::UNSAVED_NOTE), "F12 still speaks: {}", unsaved.reply);
     }
 
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
