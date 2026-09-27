@@ -9918,3 +9918,13 @@ The same text would also have fed F21's path check a path from the hand-over (`~
 - **Mutants, all watched to fail:** raw text to `think`; the prompt never shows the hand-over; never splits.
 - F24's test also checks the real #388-order capture (c0b853d), where the result is in view.
 - Full suite 2092 passed, 0 failed.
+
+**What the F28 turn stored on VM 520's Mind** (read-only, `mind.db` opened `mode=ro`):
+- `mind_goals_prefs` id 805 `interest_dates` = the hand-over block (my test turn).
+- id 368 `interest_hobbies` = "Ok, create a small town model…" (the older false belief, owner's open question 6).
+- `pending_onboard` = `interest:unwind`.
+- Two `cognitive_nodes` beliefs with source "onboard": "The user's hobbies …: Ok, create a small town model…" and "The user's key dates: [From the desktop: …".
+
+**The hand-over has been in the arena all along.** Stored transcripts carry "[From the desktop: you are taking this conversation over from Yantrik Mind …" from R2 onwards: every mind's first turn after `use_harness` has carried one. That may explain odd first cells, but it is not measured.
+
+Nothing is deleted; that waits for the owner, together with question 6. yantrik-os-f4 has been asked to carry the hand-over as a context field rather than inside the turn's text.
