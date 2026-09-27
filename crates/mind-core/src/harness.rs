@@ -355,6 +355,11 @@ async fn serve(
             let mem = mem.clone();
             let conv = conv.clone();
             let from_context = turn["context"].as_str().and_then(handover_from_context);
+            if from_context.is_some() {
+                // The raw context once, so the journal can show #394's shape as it really arrives.
+                let raw: String = turn["context"].as_str().unwrap_or_default().chars().take(4000).collect();
+                eprintln!("[harness] turn {turn_id}: hand-over in the context: {raw}");
+            }
             let mut thinking =
                 tokio::spawn(async move { take_turn(&mem, &conv, &text, from_context).await });
             // A turn can outlast the desktop's 90-second presence window, and this loop does not
