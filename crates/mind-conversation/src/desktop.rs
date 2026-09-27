@@ -1217,6 +1217,25 @@ mod tests {
         assert!(goal_nudge(3, "~/a.txt").contains("save_as"));
     }
 
+    /// yantrik-os #384 adds a `state: {…}` line to every action result, and keeps the prose first
+    /// line the unsaved scrape reads. Real captures from VM 520 (the lines up to and including
+    /// `state:`; the result object that follows is not needed here): the scrape still says unsaved
+    /// after `new`, saved after `save_as`, and mcp_voice leaves both untouched.
+    #[test]
+    fn the_state_line_leaves_the_unsaved_scrape_working() {
+        const NEW: &str = include_str!("../fixtures/desktop/act_editor_new_384.txt");
+        const SAVED: &str = include_str!("../fixtures/desktop/act_editor_save_as_384.txt");
+        let mut unsaved = false;
+        let new = serde_json::json!({"app": "editor", "action": "new", "args": {"text": "state line capture"}});
+        update_unsaved(ACT, &new, NEW, &mut unsaved);
+        assert!(unsaved, "after new");
+        let save = serde_json::json!({"app": "editor", "action": "save_as", "args": {"path": "/tmp/state-capture.txt"}});
+        update_unsaved(ACT, &save, SAVED, &mut unsaved);
+        assert!(!unsaved, "after save_as");
+        assert_eq!(mcp_voice(NEW), NEW);
+        assert_eq!(mcp_voice(SAVED), SAVED);
+    }
+
     #[test]
     fn the_desktop_map_is_said_only_with_a_desktop() {
         let s = desktop_sentence(true);

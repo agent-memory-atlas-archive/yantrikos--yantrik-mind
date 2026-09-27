@@ -1,0 +1,4 @@
+Text Editor — Untitled (no file yet), 1 line, unsaved · tab 2 of 2
+accepted: True, settled: True
+revision: 0f58da2e638ab1d3
+state: {"active_tab":1,"busy":false,"bytes":18,"characters":18,"content":"state line capture","cursor_column":1,"cursor_line":1,"dialog":0,"dialog_is":"","find_count":0,"find_query":"","language":"Plain text","lines":1,"modified":true,"notice":"","path":null,"recovery":"Protecting draft…","replacement":"","tabs":[{"modified":false,"name":"Untitled","path":null},{"modified":true,"name":"Untitled","path":null}],"title":"Untitled"}

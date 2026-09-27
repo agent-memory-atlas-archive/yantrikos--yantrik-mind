@@ -1,0 +1,4 @@
+Text Editor — state-capture.txt, 1 line, saved · tab 2 of 2 · Saved
+accepted: True, settled: True
+revision: ad29e6919059bcf8
+state: {"active_tab":1,"busy":false,"bytes":18,"characters":18,"content":"state line capture","cursor_column":1,"cursor_line":1,"dialog":0,"dialog_is":"","find_count":0,"find_query":"","language":"Plain text","lines":1,"modified":false,"notice":"Saved","path":"/tmp/state-capture.txt","recovery":"Protecting draft…","replacement":"","tabs":[{"modified":false,"name":"Untitled","path":null},{"modified":false,"name":"state-capture.txt","path":"/tmp/state-capture.txt"}],"title":"state-capture.txt"}
