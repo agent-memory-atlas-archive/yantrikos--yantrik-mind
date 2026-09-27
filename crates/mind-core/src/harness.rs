@@ -354,7 +354,9 @@ async fn serve(
         let answer = {
             let mem = mem.clone();
             let conv = conv.clone();
-            let mut thinking = tokio::spawn(async move { take_turn(&mem, &conv, &text).await });
+            let from_context = turn["context"].as_str().and_then(handover_from_context);
+            let mut thinking =
+                tokio::spawn(async move { take_turn(&mem, &conv, &text, from_context).await });
             // A turn can outlast the desktop's 90-second presence window, and this loop does not
             // poll while it thinks: "Write a note titled Shopping…" took 93 seconds and the
             // desktop reported "mind stopped responding" to a mind that was mid-answer. An empty
@@ -453,7 +455,23 @@ pub(crate) fn attach_payload(detail: &str) -> serde_json::Value {
         "detail": detail,
         "tools": true,
         "memory": true,
+        // E.ARENA1-F28 / yantrik-os #394: the hand-over comes in `context.handover`, and `text` is
+        // the person's words alone. An OS without #394 ignores the field (Attach does not deny
+        // unknown fields) and keeps prefixing, which `split_handover` still handles.
+        "handover_context": true,
     })
+}
+
+/// E.ARENA1-F28 / yantrik-os #394: the hand-over paragraph from a turn's context, when the desktop
+/// sent it there. `context` is the turn's context string (JSON), as `machine_place` reads it.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn handover_from_context(context: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(context).ok()?;
+    v["handover"]["text"]
+        .as_str()
+        .map(str::trim)
+        .filter(|t| !t.is_empty())
+        .map(str::to_string)
 }
 
 #[cfg(test)]
@@ -501,10 +519,38 @@ mod handover_tests {
         let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
         let conv = Arc::new(crate::engine(&mem, pool));
         mem.profile_set("pending_onboard", "interest:hobbies").await.unwrap();
-        let reply = take_turn(&mem, &conv, TURN).await;
+        let reply = take_turn(&mem, &conv, TURN, None).await;
         assert!(!reply.contains("noted"), "the hand-over was filed as a hobby: {reply}");
         let filed = mem.profile_get("interest_hobbies").await.unwrap();
         assert!(filed.is_none(), "an interest was stored: {filed:?}");
+    }
+
+    /// yantrik-os #394's shape, from its spec (no build carries it yet; replace with a capture when
+    /// one does): the hand-over in `context.handover.text`, the person's words alone in `text`.
+    #[test]
+    fn the_handover_is_read_from_the_turns_context() {
+        let ctx = r#"{"machine":{"timezone":"UTC"},"handover":{"from":"Hermes Agent","text":"[From the desktop: you are taking this conversation over from Hermes Agent. it was:\n- The person: hi\nCarry on from here.]"}}"#;
+        let h = handover_from_context(ctx).expect("the handover is read");
+        assert!(h.starts_with("[From the desktop:") && h.ends_with("Carry on from here.]"), "{h}");
+        assert_eq!(handover_from_context(r#"{"machine":{"timezone":"UTC"}}"#), None);
+        assert_eq!(handover_from_context(r#"{"handover":{"text":"  "}}"#), None);
+        assert_eq!(handover_from_context("not json"), None);
+        assert_eq!(super::attach_payload("t")["handover_context"], serde_json::json!(true), "the Mind opts in");
+    }
+
+    /// With #394 the text is the person's own, and a hand-over from the context must not be taken as
+    /// the answer to a pending question either.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn a_handover_from_the_context_is_not_an_answer_either() {
+        const TURN: &str = include_str!("../../mind-conversation/fixtures/desktop/handover_e855ad7.txt");
+        let (block, message) = mind_conversation::split_handover(TURN);
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+        let conv = Arc::new(crate::engine(&mem, pool));
+        mem.profile_set("pending_onboard", "interest:hobbies").await.unwrap();
+        let reply = take_turn(&mem, &conv, &message, block).await;
+        assert!(!reply.contains("noted"), "{reply}");
+        assert!(mem.profile_get("interest_hobbies").await.unwrap().is_none());
     }
 }
 
@@ -584,8 +630,18 @@ async fn set_up(
 /// E.ARENA1-F28: one desktop turn. A hand-over from another mind is context for the model, never
 /// the person's message: the onboarding gate and every heuristic read only what they typed.
 #[cfg_attr(not(unix), allow(dead_code))]
-async fn take_turn(mem: &MemoryHandle, conv: &Arc<ConversationEngine>, text: &str) -> String {
-    let (handover, message) = mind_conversation::split_handover(text);
+async fn take_turn(
+    mem: &MemoryHandle,
+    conv: &Arc<ConversationEngine>,
+    text: &str,
+    from_context: Option<String>,
+) -> String {
+    // yantrik-os #394 puts it in the context and leaves `text` the person's own; an OS without it
+    // prefixes the text, and that is split here.
+    let (handover, message) = match from_context {
+        Some(h) => (Some(h), text.to_string()),
+        None => mind_conversation::split_handover(text),
+    };
     if let Some(b) = &handover {
         eprintln!("[harness] a hand-over from another mind ({} chars) kept as context", b.chars().count());
     }

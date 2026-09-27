@@ -9928,3 +9928,8 @@ The same text would also have fed F21's path check a path from the hand-over (`~
 **The hand-over has been in the arena all along.** Stored transcripts carry "[From the desktop: you are taking this conversation over from Yantrik Mind …" from R2 onwards: every mind's first turn after `use_harness` has carried one. That may explain odd first cells, but it is not measured.
 
 Nothing is deleted; that waits for the owner, together with question 6. yantrik-os-f4 has been asked to carry the hand-over as a context field rather than inside the turn's text.
+
+**F28b, for yantrik-os #394** (opt-in and additive, merged to OS main, not yet on 520):
+- The Mind's attach sends `handover_context: true`. Attach does not deny unknown fields, so older builds ignore it.
+- `take_turn` prefers `context.handover.text` and treats `text` as the person's words; with no such field it falls back to F28's split.
+- Tests are built from #394's written spec, because no build carries it yet. They are to be replaced by a real capture when one does (see "synthetic cases share your misconception").
