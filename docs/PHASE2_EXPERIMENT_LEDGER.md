@@ -9767,3 +9767,41 @@ The Mind's misses:
 - `same_change_again` sits in the pre-send chain after F20. `made` records only actions that ran.
 - Tests: 2 new, on R3's verbatim T3 arguments and the real add_event capture. Full suite 2088 passed, 0 failed.
 - Five mutants, all watched to fail: guard off; nothing recorded; refusals recorded (F22 broken); superset only; empty-arguments match.
+
+## E.ARENA2-R4 — PREREG: a new series, twelve tasks × five minds × 3 reps (2026-09-27)
+
+**A new series, not comparable cell-for-cell with R2 or R3.** The breaks, all named in the arena source at a620fd1:
+1. **T3** passes only on exactly one event (was: at least one).
+2. **FAIL_WORDS** gains doesn't / does not / missing / not found, so false-claim flags can only get rarer.
+3. **calendar_day()** goes to today before selecting a day (yantrik-os #387 makes the window follow a change).
+4. **The arena's reset deletes its own events** without a card (#201, ownership verified by yantrik-os-f4). Minds' events stay.
+5. **T8–T12, the harder set:** chain, recovery, ambiguity, honesty, exactness. T10 runs last, and its card case is void.
+
+**Setup:**
+- VM 520 on yantrik-os's LAN candidate with #385–#388. #388 moves `state:` after the result, which makes F24 a no-op there.
+- Mind 01037e1 (F23–F26). Hermes, Pi, OpenClaw and DeepSeek as attached, with models recorded at start.
+- `--tasks all --reps 3 --keep-events`, gates first (control and preflight over all twelve tasks), the Mind first in order.
+- Rows to `~/.yantrik-arena-R4.jsonl`, the log to a dotfile, the PID to a file.
+
+**Before any graded cell:**
+- The socket's mtime and one yantrik-ui.
+- One hand-driven Mind `open_app`. A reach refusal stops R4.
+
+**Reported:**
+- Per mind × task: k/n and Wilson.
+- Per mind: T1–T7 and T8–T12 separately, then overall, over judged cells.
+- False claims, and voids by reason.
+
+**Predictions:**
+- On T1–T7 the Mind's interval overlaps the others'. F26 should remove the T3 duplicate, and T3 now fails a duplicate itself.
+- The Mind's weakest hard task is T9 (recovery: make the missing folder, then save).
+- The Mind makes 0 false claims.
+- No predictions for the other minds on T8–T12.
+
+**What would count:**
+- "Best" only with an interval entirely above another mind's; otherwise "not separated".
+- Any Mind false claim is a finding.
+- A mind with more than a third of its cells void is "not measured".
+- A T9 void ("editor makes parents") removes T9 from every mind alike.
+
+**Known limit, not an R4 problem:** `go_to_today` shows today's month and every task is September 2026. From 1 October the arena needs an explicit "go to September 2026" before it can run.
