@@ -512,6 +512,16 @@ pub(crate) fn repeated_action_note(
     })
 }
 
+/// E.ARENA1-F20: another `new` while the document written this turn is still unsaved -- whatever
+/// its text. V9's T7 (yantrik-os 2c687eb): the model called `editor.new` with the three titles
+/// again and again, alternating with and without a trailing newline, so every other call was not a
+/// repeat and met no nudge; it opened tab after tab and never saved. A second new tab is not the
+/// next step for a document that still needs saving, so it is answered with the exact save call.
+pub(crate) fn another_new_while_unsaved(tool: &str, args: &serde_json::Value, unsaved: bool) -> bool {
+    unsaved
+        && act_target(tool, args).is_some_and(|(_, action)| action == "new" || action == "editor_new")
+}
+
 /// E.ARENA1-F19: the file path a request names -- `~/…` or an absolute path -- as the person wrote
 /// it, trailing punctuation dropped.
 pub(crate) fn requested_path(user_text: &str) -> Option<String> {
@@ -917,6 +927,18 @@ mod tests {
         let unsaved = repeated_action_note(ACT, &editor, true, None).unwrap();
         assert!(unsaved.contains("`editor.save_as`") && !unsaved.contains("editor_save_as"), "{unsaved}");
         assert_eq!(repeated_action_note(DESCRIBE, &editor, true, None), None, "reads keep the loop's own nudge");
+    }
+
+    #[test]
+    fn a_new_tab_while_unsaved_is_caught_whatever_its_text() {
+        let a = serde_json::json!({"app": "editor", "action": "new", "args": "a\nb"});
+        assert!(another_new_while_unsaved(ACT, &a, true));
+        assert!(!another_new_while_unsaved(ACT, &a, false), "nothing unsaved: a new tab is fine");
+        let shell = serde_json::json!({"app": "shell", "action": "editor_new"});
+        assert!(another_new_while_unsaved(ACT, &shell, true));
+        let save = serde_json::json!({"app": "editor", "action": "save_as", "args": {"path": "~/x"}});
+        assert!(!another_new_while_unsaved(ACT, &save, true));
+        assert!(!another_new_while_unsaved(DESCRIBE, &a, true));
     }
 
     /// E.ARENA1-F19: with the request's path, the exact call -- for the app the model is using.

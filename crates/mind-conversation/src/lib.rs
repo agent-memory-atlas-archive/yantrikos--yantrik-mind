@@ -13415,6 +13415,14 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             // through to the person.
             let not_sent = if let Some(note) = desktop::already_answered(&tool, &args, &answered) {
                 Some(note)
+            } else if desktop::another_new_while_unsaved(&tool, &args, unsaved_doc) {
+                // E.ARENA1-F20: a document still needs saving; another new tab is not the step.
+                desktop::repeated_action_note(
+                    &tool,
+                    &args,
+                    true,
+                    desktop::requested_path(user_text).as_deref(),
+                )
             } else {
                 // E.ARENA1-F15: an app acted on without a describe this turn has its grades read
                 // first -- for the loop, not the model -- so the checks below can see them.

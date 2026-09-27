@@ -9485,3 +9485,11 @@ Five mutants, each watched to fail. Workspace: 2072 passed, 0 failed.
 
 - **V7** (Mind `7366051`, yantrik-os 0f3e733): VM 520 was at the lock screen. The OS session's full release-check ends with a check that locks the desktop on purpose, and only a person can undo it. The arena skipped the Mind with *"LOCKED: the desktop is waiting for the person to sign in"*, as designed.
 - **V8** (same Mind, candidate 2c687eb): setup passed. The Mind was restarted onto the new `yos-mcp`, one shell owned `harness.sock` (created 2 s after that shell started), `--control` 7/7, `--preflight` 7/7. Then the OS session's release-check locked the desktop again (06:28 UTC) during run 1's T6. That cell's `shell.open_app editor` answered *"this bridge could not read the desktop's mind-mode, so it fell back to `ask`"*, consistent with a locking desktop, which reports only `locked: true`. The arena waited 300 s. **Voided as lock-contaminated**, and the arena was stopped. No pass or fail for the candidate's gate from this side.
+
+### V9 (`m3a` + `h7m`, Mind `7366051`, candidate 2c687eb, unlocked): **3/4, 0 false claims**, and the candidate's Mind gate passed
+
+T6 passed twice (14.4 s, 10.2 s): each time the model repeated `new` twice, got F19's exact call, and **copied it**: `save_as {"path": "~/arena-minm3a.txt"}`. T7 passed once (12.6 s, `new` then straight to `save_as`). T7 failed once (11.6 s): the model called `new` with the titles over and over, alternating with and without a trailing newline. Every other call was therefore not a repeat and met no nudge. The reply said honestly that the file was not saved. Every OS call behaved as documented. The OS session promoted 2c687eb to the public nightly with this as its Mind gate.
+
+## E.ARENA1-F20 — another `new` while the document is unsaved is answered with the save
+
+While a document written this turn is unsaved, another `new` (or the shell's `editor_new`) on it, with any text, is not sent. It is answered with F19's exact save call instead. That covers V9's T7 shape, where the text differed only by a trailing newline. Loop test replays it (one tab opened, then `save_as` reaches the desktop). Two mutants, each watched to fail, including *any new is caught, saved or not*, which a saved document's test catches. Workspace: 2074 passed, 0 failed.

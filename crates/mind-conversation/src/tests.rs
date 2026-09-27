@@ -17022,6 +17022,30 @@ mod desktop_consent_and_stall_wiring {
         assert!(!r.prompts.iter().any(|p| p.contains("re-run with --full")), "the model was told to re-run");
     }
 
+    /// E.ARENA1-F20, V9's T7: `new` with the text, then `new` again with a trailing newline --
+    /// not a repeat, so no nudge ever caught it. The second new tab is held back and answered
+    /// with the exact save; the model's save_as reaches the desktop, and only one tab was opened.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_second_new_tab_while_unsaved_is_answered_with_the_save() {
+        const EDITOR_253: &str = include_str!("../fixtures/desktop/describe_editor_253.txt");
+        let r = run(
+            vec![
+                Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "a\nb")),
+                Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "a\nb\n")),
+                Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "editor", "action": "save_as", "args": {"path": "~/x.txt"}})),
+            ],
+            vec![EDITOR_253],
+            vec![
+                "Done \u{2014} Text Editor \u{2014} Untitled (no file yet), 2 lines, unsaved \u{b7} tab 2 of 2",
+                "Done \u{2014} Text Editor \u{2014} x.txt, 2 lines, saved",
+            ],
+        )
+        .await;
+        let reached: Vec<String> = reached_acts(&r).into_iter().map(|(_, a)| a).collect();
+        assert_eq!(reached, vec!["new".to_string(), "save_as".to_string()], "{:?}", r.reached);
+        assert!(r.prompts.iter().any(|p| p.contains(r#""action": "save_as", "args": {"path": "~/x.txt"}"#)), "no exact save offered");
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
     /// question; the same turn asked as a QUESTION still gets one, so the gate is the
     /// instruction and not the feature being off.
