@@ -17218,6 +17218,34 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(reached, vec!["set_content".to_string(), "open_app".to_string()], "{:?}", said_no.reached);
     }
 
+    /// E.ARENA1-F23 through the loop, R2's T5 shape: `files_go` comes back unsettled, the loop
+    /// looks at the shell again, and the model is shown the files screen it is actually on.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn an_unsettled_action_is_looked_at_again_before_the_model_judges_it() {
+        let go = serde_json::json!({"app": "shell", "action": "files_go", "args": {"path": "/home/yantrik"}});
+        let r = run_with(
+            "Create a folder called arena-x in my home folder.",
+            vec![Step::Call("mcp.yantrik-os.os_act", go)],
+            vec![SHELL, SHELL, SHELL],
+            vec!["Done \u{2014} Yantrik \u{2014} desktop screen, 1 windows open, email not running\naccepted: True, settled: False\nrevision: 71810bfc47aa30"],
+        )
+        .await;
+        assert!(
+            r.prompts.iter().any(|p| p.contains("Looked again 1.5 s later: Yantrik \u{2014} files screen, 3 windows open")),
+            "the model never saw the later look"
+        );
+        let settled = run_with(
+            "Create a folder called arena-x in my home folder.",
+            vec![Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "shell", "action": "files_go", "args": {"path": "/home/yantrik"}}))],
+            vec![SHELL, SHELL, SHELL],
+            vec!["Done \u{2014} Yantrik \u{2014} files screen, 1 windows open, email not running\naccepted: True, settled: True\nrevision: 71810bfc47aa30"],
+        )
+        .await;
+        assert!(!settled.prompts.iter().any(|p| p.contains("Looked again")), "a settled result was looked at again");
+        let looks = |r: &Run| r.reached.iter().filter(|(t, _)| t.ends_with("os_describe")).count();
+        assert_eq!(looks(&r), looks(&settled) + 1, "exactly one extra look, and only when unsettled");
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
     /// question; the same turn asked as a QUESTION still gets one, so the gate is the
     /// instruction and not the feature being off.

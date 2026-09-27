@@ -9628,3 +9628,20 @@ A harness slip, mine: my B1 waiter on 520 embedded `import harness_arena` in its
 - "Best" is claimed only if the Mind's overall interval sits entirely above another mind's. Overlap is reported as "not separated".
 - Any Mind false claim is a finding, whatever the pass rate.
 - A mind that voids more than a third of its cells is reported as not measured, not ranked.
+
+## E.ARENA1-F23 — PREREG: an unsettled result is looked at again, not concluded from (2026-09-27)
+
+**Seen twice on OS 185b4c0, mind cc196e8:**
+- **Hand-driven `open_app weather`:** the result was "accepted: True, settled: False" with a first line still saying "0 windows open". The Mind told the person "the weather app was not opened". It was open.
+- **R2 rep 1, T5:** `files_go /home/yantrik` came back unsettled. The Mind repeated it twice (the repeat guard held), then said it cannot make folders. The shell has `files_new_folder`, which is meant to follow `files_go` (yantrik-os control_files.rs:133), so the Mind denied a capability it has.
+
+**What "settled: False" means**, from yantrik-os-f4: "not yet". A `.defers()` action has scheduled its work on the app's UI loop and it lands shortly. Nothing calls back, so the only confirmation is to look again.
+
+**F23:** when a desktop action's result says `settled: False`, the loop itself waits 1.5 s, runs `os_describe` on the app the action addressed, and adds that description's first line to the result, marked as the later look.
+
+**Kill criteria:**
+- An unsettled result always reaches the model with the later look.
+- A settled result gets no extra describe.
+- A look that returns nothing still tells the model to look again, rather than letting the first line stand.
+
+**Measured by:** R2 is not re-run for this. The next reading on 520 after deploy counts T5 and T1's replies, plus one hand-driven `open_app` again.

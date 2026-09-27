@@ -13517,6 +13517,18 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             } else {
                 obs
             };
+            // E.ARENA1-F23: accepted but not finished -- the first line is the state from before.
+            // Look again at the same app after a moment, and hand the model what is there now.
+            let obs = match desktop::settle_look(&tool, &args).filter(|_| sent && desktop::unsettled(&obs)) {
+                Some(look) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(desktop::SETTLE_WAIT_MS)).await;
+                    let seen = self.run_agent_tool_as(desktop::DESCRIBE, &look, id).await;
+                    desktop::record_described(&look, &seen, &mut described);
+                    eprintln!("[agent] step {step}: {tool} was unsettled \u{2014} looked again");
+                    desktop::settled_since(&obs, &seen)
+                }
+                None => obs,
+            };
             // E.ARENA1-F18: the desktop's CLI advice, in words a model can act on.
             let obs = if tool.starts_with("mcp.yantrik-os.") { desktop::mcp_voice(&obs) } else { obs };
             if tool == desktop::DESCRIBE {

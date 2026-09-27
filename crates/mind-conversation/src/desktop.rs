@@ -542,6 +542,44 @@ pub(crate) fn requested_path(user_text: &str) -> Option<String> {
         .map(str::to_string)
 }
 
+/// E.ARENA1-F23: how long to wait before looking again at an unsettled action. yantrik-os-f4:
+/// a `.defers()` action has scheduled its work on the app's UI loop, "lands shortly"; 1-2 s.
+pub(crate) const SETTLE_WAIT_MS: u64 = if cfg!(test) { 0 } else { 1500 };
+
+/// E.ARENA1-F23: the desktop accepted the action but had not finished it when it answered, so the
+/// result's first line is the state from BEFORE. The desktop's own words, on their own line:
+/// `accepted: True, settled: False`.
+pub(crate) fn unsettled(obs: &str) -> bool {
+    obs.lines().any(|l| l.trim().to_ascii_lowercase().contains("settled: false"))
+}
+
+/// E.ARENA1-F23: the look to take again -- the app the action addressed.
+pub(crate) fn settle_look(tool: &str, args: &serde_json::Value) -> Option<serde_json::Value> {
+    let (app, _) = act_target(tool, args)?;
+    Some(serde_json::json!({"app": app}))
+}
+
+/// E.ARENA1-F23: the unsettled result, with what a second look found. Seen on 185b4c0: the Mind
+/// told the person "the weather app was not opened" from a first line that still said "0 windows
+/// open" -- it was open; and on T5 read an unsettled `files_go` as a failure and never reached
+/// `files_new_folder`, saying it could not make folders.
+pub(crate) fn settled_since(obs: &str, seen: &str) -> String {
+    let head = seen.lines().next().unwrap_or("");
+    let head = head.split(" revision:").next().unwrap_or(head).trim();
+    if head.is_empty() {
+        return format!(
+            "{obs}\n(settled: False -- the desktop had not finished when it answered, so the first line \
+             above is from BEFORE the action. Look again with os_describe before saying whether it worked.)"
+        );
+    }
+    format!(
+        "{obs}\n(settled: False -- the desktop had not finished when it answered, so the first line above \
+         is from BEFORE the action. Looked again {:.1} s later: {head}. Judge the action from this, not \
+         from the first line.)",
+        SETTLE_WAIT_MS.max(1500) as f64 / 1000.0
+    )
+}
+
 /// E.ARENA1-F21: the path a request asks to have MADE -- created, written, saved -- or `None`.
 /// Every "is the work done" signal before this one was scraped from the first line of a desktop
 /// result; this one asks the world. A request to delete, move or rename a path is not asking for
@@ -1245,6 +1283,22 @@ mod tests {
         assert!(!unsaved, "after save_as");
         assert_eq!(mcp_voice(NEW), NEW);
         assert_eq!(mcp_voice(SAVED), SAVED);
+    }
+
+    /// E.ARENA1-F23 on the desktop's real line shape (VM 520, 185b4c0, `open_app weather`).
+    #[test]
+    fn an_unsettled_result_carries_the_later_look() {
+        let got = "Done \u{2014} Yantrik \u{2014} desktop screen, 0 windows open, calendar, email and notes not running\naccepted: True, settled: False\nrevision: 99e35624c6c";
+        assert!(unsettled(got));
+        assert!(!unsettled("Done \u{2014} Notes\naccepted: True, settled: True"));
+        let open = serde_json::json!({"app": "shell", "action": "open_app", "args": {"name": "weather"}});
+        assert_eq!(settle_look(ACT, &open), Some(serde_json::json!({"app": "shell"})));
+        assert_eq!(settle_look(DESCRIBE, &open), None);
+        let later = settled_since(got, "Yantrik \u{2014} desktop screen, 1 windows open, calendar, email and notes not running\nrevision: 1\n{}");
+        assert!(later.starts_with(got), "the desktop's own answer is kept");
+        assert!(later.contains("Looked again 1.5 s later: Yantrik \u{2014} desktop screen, 1 windows open"), "{later}");
+        let blind = settled_since(got, "");
+        assert!(blind.contains("Look again with os_describe"), "{blind}");
     }
 
     #[test]
