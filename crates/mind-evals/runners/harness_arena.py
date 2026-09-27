@@ -10,12 +10,14 @@ Runs ON the Yantrik OS machine, stdlib only, drives everything through `yos`.
     python3 harness_arena.py                      # every attached mind except the companion
     python3 harness_arena.py --minds mind,hermes  # just these
     python3 harness_arena.py --tasks T1,T3        # just these tasks
+    python3 harness_arena.py --tasks T6,T7 --reps 10   # a pass rate, not an anecdote
 
 Writes one JSON line per (mind, task) to --out and prints a table. See docs/PHASE2_EXPERIMENT_LEDGER.md
 E.ARENA1 for the preregistration, the kill criteria and why the tasks are what they are.
 """
 import argparse
 import json
+import math
 import os
 import random
 import re
@@ -427,6 +429,21 @@ def run(minds, task_ids, out_path, run_id):
                             f.write(json.dumps(row) + "\n")
                         print(f"  {mind:9} {tid}  VOID(busy)", flush=True)
                         continue
+                if desktop_locked():
+                    # The desktop locked under the turn: every act after that was refused LOCKED,
+                    # so the reply says nothing about the mind. Void, never a fail (V7/V8).
+                    row = {"run": run_id, "mind": mind, "task": tid, "pass": False,
+                           "void": "locked", "finished": finished, "seconds": secs,
+                           "false_claim": False, "evidence": "the desktop locked during the turn",
+                           "ask": text, "reply": reply[-1500:]}
+                    rows.append(row)
+                    with open(out_path, "a") as f:
+                        f.write(json.dumps(row) + "\n")
+                    print(f"  {mind:9} {tid}  VOID(locked)", flush=True)
+                    # Nobody can act until a person signs in: every later cell of this rep, for
+                    # every mind, would be asked on a locked desktop. The rep ends here, and the
+                    # reps loop sees the lock and stops.
+                    return rows
                 try:
                     ok, evidence = grade(reply)
                 except Exception as e:  # a grader crash is a void cell, never a pass
@@ -467,6 +484,43 @@ def table(rows, minds, task_ids):
         med = secs[len(secs) // 2] if secs else 0
         print(f"{m:10} " + " ".join(cells) +
               f"   {sum(x['pass'] for x in judged)}/{len(judged)}  {sum(x['false_claim'] for x in judged):>12}  {med:>8}")
+
+
+def wilson(k, n, z=1.96):
+    """The Wilson 95% interval for k passes in n judged cells, as (low, high); (0, 1) for n = 0.
+
+    Not k/n +- something: at the counts an arena runs (a handful to a few dozen) the normal
+    approximation leaves [0, 1] and says 10/10 is certain. Wilson does neither."""
+    if n == 0:
+        return 0.0, 1.0
+    p = k / n
+    centre = (p + z * z / (2 * n)) / (1 + z * z / n)
+    half = z * math.sqrt(p * (1 - p) / n + z * z / (4 * n * n)) / (1 + z * z / n)
+    return max(0.0, centre - half), min(1.0, centre + half)
+
+
+def summary(rows, minds, task_ids):
+    """Every rep together, per mind and task: passes over judged cells with the Wilson interval,
+    false claims, the median seconds, and the void cells by reason -- shown, never counted."""
+    print()
+    print(f"{'mind':10} {'task':5} {'pass':>7}  {'95% interval':>13}  {'false-claims':>12}  {'median-s':>8}  void")
+    for m in minds:
+        for t in task_ids:
+            cells = [x for x in rows if x["mind"] == m and x["task"] == t]
+            if not cells:
+                continue
+            judged = [x for x in cells if not x.get("void")]
+            k, n = sum(x["pass"] for x in judged), len(judged)
+            low, high = wilson(k, n)
+            secs = sorted(x["seconds"] for x in judged)
+            med = secs[len(secs) // 2] if secs else 0
+            voids = {}
+            for x in cells:
+                if x.get("void"):
+                    voids[x["void"]] = voids.get(x["void"], 0) + 1
+            void = ", ".join(f"{why} {c}" for why, c in sorted(voids.items())) or "-"
+            print(f"{m:10} {t:5} {k:>3}/{n:<3}  {low:5.0%} - {high:4.0%}  "
+                  f"{sum(x['false_claim'] for x in judged):>12}  {med:>8}  {void}")
 
 
 def preflight(task_ids):
@@ -555,6 +609,11 @@ def main():
     ap.add_argument("--preflight", action="store_true")
     ap.add_argument("--control", action="store_true")
     ap.add_argument("--out", default=os.path.join(HOME, ".yantrik-arena-results.jsonl"))
+    ap.add_argument("--reps", type=int, default=1,
+                    help="run every task this many times, each rep a fresh world, and report a pass "
+                         "rate with its Wilson 95%% interval")
+    ap.add_argument("--no-gates", action="store_true",
+                    help="with --reps, skip the control and preflight that otherwise run first")
     ap.add_argument("--keep-events", action="store_true",
                     help="leave the arena's own calendar events instead of asking the person to delete them")
     a = ap.parse_args()
@@ -569,13 +628,31 @@ def main():
         leaks = preflight([t for t in a.tasks.split(",") if t])
         print("PREFLIGHT", "FAILED -- tasks passable on words: %s" % leaks if leaks else "OK")
         return 1 if leaks else 0
-    run_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=3))
     minds = [m for m in a.minds.split(",") if m] or \
         [m["id"] for m in attached_minds() if m["id"] != "companion"]
     task_ids = [t for t in a.tasks.split(",") if t]
-    print(f"arena run {run_id}: minds {minds}, tasks {task_ids}", flush=True)
-    rows = run(minds, task_ids, a.out, run_id)
-    table(rows, minds, task_ids)
+    if a.reps > 1 and not a.no_gates:
+        # A rate is only worth the minutes it costs if the graders are sound: a task done right
+        # must pass and a task only claimed must fail, before a single mind is asked (K20).
+        broken = control(task_ids)
+        leaks = preflight(task_ids)
+        if broken or leaks:
+            print(f"GATES FAILED -- control: {broken or 'ok'}, preflight: {leaks or 'ok'}; no graded run")
+            return 1
+    rows = []
+    for rep in range(max(1, a.reps)):
+        if desktop_locked():
+            print(f"!! the desktop is locked; stopping after {rep} of {a.reps} reps -- someone has to sign in",
+                  flush=True)
+            break
+        run_id = "".join(random.choices(string.ascii_lowercase + string.digits, k=3))
+        label = f" (rep {rep + 1} of {a.reps})" if a.reps > 1 else ""
+        print(f"arena run {run_id}{label}: minds {minds}, tasks {task_ids}", flush=True)
+        got = run(minds, task_ids, a.out, run_id)
+        table(got, minds, task_ids)
+        rows += got
+    if a.reps > 1:
+        summary(rows, minds, task_ids)
 
 
 if __name__ == "__main__":
