@@ -9480,3 +9480,8 @@ F17 gave its extra step. The model kept calling the same `editor.new{text}`, 5 t
 - **F19:** when an unsaved document's action is repeated and the request names a path (`~/…` or absolute), the nudge carries the exact next call: `os_act {"app": "editor", "action": "save_as", "args": {"path": "~/arena-x.txt"}}`, with the save that fits the app in use (`editor_save_as` on the shell, `save_as` on the editor). It no longer names the shell's `editor_save_as` to a model using the editor.
 
 Five mutants, each watched to fail. Workspace: 2072 passed, 0 failed.
+
+### V7/V8: F19 still not measured live, because the desktop was locked both times
+
+- **V7** (Mind `7366051`, yantrik-os 0f3e733): VM 520 was at the lock screen. The OS session's full release-check ends with a check that locks the desktop on purpose, and only a person can undo it. The arena skipped the Mind with *"LOCKED: the desktop is waiting for the person to sign in"*, as designed.
+- **V8** (same Mind, candidate 2c687eb): setup passed. The Mind was restarted onto the new `yos-mcp`, one shell owned `harness.sock` (created 2 s after that shell started), `--control` 7/7, `--preflight` 7/7. Then the OS session's release-check locked the desktop again (06:28 UTC) during run 1's T6. That cell's `shell.open_app editor` answered *"this bridge could not read the desktop's mind-mode, so it fell back to `ask`"*, consistent with a locking desktop, which reports only `locked: true`. The arena waited 300 s. **Voided as lock-contaminated**, and the arena was stopped. No pass or fail for the candidate's gate from this side.
