@@ -16873,6 +16873,9 @@ mod desktop_consent_and_stall_wiring {
                 Step::Call("mcp.yantrik-os.os_act", write.clone()),
                 Step::Call("mcp.yantrik-os.os_act", write.clone()),
                 Step::Call("mcp.yantrik-os.os_act", write.clone()),
+                // F17 answers the first run of repeats with one more step; these two use it up.
+                Step::Call("mcp.yantrik-os.os_act", write.clone()),
+                Step::Call("mcp.yantrik-os.os_act", write.clone()),
             ],
             vec![SHELL],
             vec![NEW_DOC, WROTE],
@@ -16977,6 +16980,32 @@ mod desktop_consent_and_stall_wiring {
             steps.iter().all(|p| p.contains("written with the `editor` app")),
             "a step prompt lacked the desktop map"
         );
+    }
+
+    /// E.ARENA1-F17, VM 520 on 0f3e733: `new{text}`, then the same `new` twice more -- two
+    /// barren repeats used to end the turn with the document unsaved. Now the unsaved nudge buys
+    /// one more step, and the model's `save_as` reaches the desktop.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeats_do_not_end_a_turn_with_its_document_unsaved() {
+        const EDITOR_253: &str = include_str!("../fixtures/desktop/describe_editor_253.txt");
+        let new = act("editor", "new", "hello");
+        let r = run(
+            vec![
+                Step::Call("mcp.yantrik-os.os_act", new.clone()),
+                Step::Call("mcp.yantrik-os.os_act", new.clone()),
+                Step::Call("mcp.yantrik-os.os_act", new.clone()),
+                Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "editor", "action": "save_as", "args": {"path": "/home/yantrik/x.txt"}})),
+            ],
+            vec![EDITOR_253],
+            vec![
+                "Done \u{2014} Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved \u{b7} tab 2 of 2",
+                "Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved",
+            ],
+        )
+        .await;
+        let reached: Vec<String> = reached_acts(&r).into_iter().map(|(_, a)| a).collect();
+        assert_eq!(reached, vec!["new".to_string(), "save_as".to_string()], "{:?}", r.reached);
+        assert!(!r.reply.contains(crate::desktop::UNSAVED_NOTE), "{}", r.reply);
     }
 
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you

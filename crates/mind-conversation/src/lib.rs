@@ -13343,6 +13343,15 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 }
                 barren += 1;
                 if barren >= MAX_BARREN_STEPS {
+                    // E.ARENA1-F17: repeats would end the turn with a document still unsaved --
+                    // tell it once and give it the step (VM 520, 0f3e733: `new{text}` three times,
+                    // never `save_as`).
+                    if unsaved_doc && !unsaved_nudged {
+                        unsaved_nudged = true;
+                        barren = 0;
+                        scratch.push_str(&desktop::unsaved_nudge(step));
+                        continue;
+                    }
                     break;
                 }
                 continue;
@@ -13361,6 +13370,15 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 }
                 barren += 1;
                 if barren >= MAX_BARREN_STEPS {
+                    // E.ARENA1-F17: repeats would end the turn with a document still unsaved --
+                    // tell it once and give it the step (VM 520, 0f3e733: `new{text}` three times,
+                    // never `save_as`).
+                    if unsaved_doc && !unsaved_nudged {
+                        unsaved_nudged = true;
+                        barren = 0;
+                        scratch.push_str(&desktop::unsaved_nudge(step));
+                        continue;
+                    }
                     break;
                 }
                 continue;

@@ -384,8 +384,12 @@ def run(minds, task_ids, out_path, run_id):
             if desktop_locked():
                 print(f"!! the desktop is locked; {mind} not run -- someone has to sign in", flush=True)
                 continue
-            switched = act("shell", "use_harness", id=mind)
-            time.sleep(1)
+            # Only switch when needed: since yantrik-os #316 `use_harness` is sensitive, so asking for
+            # the mind that is already answering would put a card up for nothing.
+            switched = ""
+            if active_mind() != mind:
+                switched = act("shell", "use_harness", id=mind)
+                time.sleep(1)
             if active_mind() != mind:
                 why = ("use_harness waited on a card -- since yantrik-os #316 it is sensitive, so an "
                        "Ask-mode desktop asks the person; run the arena with the desktop in Auto"
