@@ -9933,3 +9933,14 @@ Nothing is deleted; that waits for the owner, together with question 6. yantrik-
 - The Mind's attach sends `handover_context: true`. Attach does not deny unknown fields, so older builds ignore it.
 - `take_turn` prefers `context.handover.text` and treats `text` as the person's words; with no such field it falls back to F28's split.
 - Tests are built from #394's written spec, because no build carries it yet. They are to be replaced by a real capture when one does (see "synthetic cases share your misconception").
+
+**Mind gate for yantrik-os 753-gce8c715: PASS.**
+- Mind c45ebbc, T1–T7 rep 1: 7/7, 0 false claims, 0 voids (rows md5 918d93c0). CONTROL and PREFLIGHT were OK first.
+- The shared ollama.com key had reset beforehand: a one-token probe returned 200, key never printed.
+- **My slip:** the first attempt ran `--control` without `--keep-events`. The reset tried `delete_event` on minds' events and raised two cards, which expired unanswered, so nothing was deleted. I killed it by PID; the gate script now passes `--keep-events`, and `pipefail` stops before any graded cell if a gate fails.
+
+**#394 live:** after a switch from Hermes, the turn's text was the person's words alone, and the hand-over came in `context.handover`. The real context (`context_handover_ce8c715.json`) now replaces the spec-based test input.
+
+**Seen in the same hand-driven session** (not graded):
+- "Close the Notes app": `close_window {title: "Notes"}` was refused (no window matches) while Notes was open.
+- The Mind then told the person Notes was not open, contradicting the `os_apps` it had just read. A false negative on the Mind side; the OS side was asked about closing an app by name.

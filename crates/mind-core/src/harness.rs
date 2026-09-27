@@ -530,11 +530,11 @@ mod handover_tests {
         assert!(filed.is_none(), "an interest was stored: {filed:?}");
     }
 
-    /// yantrik-os #394's shape, from its spec (no build carries it yet; replace with a capture when
-    /// one does): the hand-over in `context.handover.text`, the person's words alone in `text`.
+    /// yantrik-os #394 as it really arrived (VM 520, OS ce8c715, turn 377, after a switch from
+    /// Hermes): the hand-over in `context.handover.text`, next to `machine`.
     #[test]
     fn the_handover_is_read_from_the_turns_context() {
-        let ctx = r#"{"machine":{"timezone":"UTC"},"handover":{"from":"Hermes Agent","text":"[From the desktop: you are taking this conversation over from Hermes Agent. it was:\n- The person: hi\nCarry on from here.]"}}"#;
+        let ctx = include_str!("../../mind-conversation/fixtures/desktop/context_handover_ce8c715.json").trim();
         let h = handover_from_context(ctx).expect("the handover is read");
         assert!(h.starts_with("[From the desktop:") && h.ends_with("Carry on from here.]"), "{h}");
         assert_eq!(handover_from_context(r#"{"machine":{"timezone":"UTC"}}"#), None);
