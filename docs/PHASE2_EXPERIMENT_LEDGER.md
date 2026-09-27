@@ -9600,3 +9600,31 @@ Also, a harness note: the reset deletes `~/arena-*`, which unlinked a log I had 
 Both builds pass T6/T7 near the ceiling on this OS build. More reps of these two tasks will not separate them. The next useful reading is a harder task set, or the full seven-task arena against the other harnesses.
 
 A harness slip, mine: my B1 waiter on 520 embedded `import harness_arena` in its own command line, so `pgrep -f "harness_[a]rena"` matched the waiter and it waited on itself. The run was unaffected; the waiters were killed by PID. (Rows: `~/.yantrik-arena-R1-B0.jsonl` md5 9d8d0bab…, `~/.yantrik-arena-R1-B1.jsonl` md5 87920b59….)
+
+## E.ARENA1-R2 — PREREG: seven tasks × five minds × 3 reps on yantrik-os 185b4c0 (2026-09-27)
+
+**Why:** T6/T7 are at the ceiling for the Mind. The comparison Pranab asked for, the best harness on the OS, is across all tasks and all minds. Readings D and E had one cell per mind per task.
+
+**Setup:**
+- VM 520 on OS main 185b4c0 (#380 fail-closed reach, #384 `state:` line, #383, #382).
+- Mind cc196e8. Hermes, Pi, OpenClaw and DeepSeek as attached, each with its model recorded from `describe shell`'s harnesses list at start.
+- `--tasks T1..T7 --reps 3 --keep-events`, with the control and preflight gates first. Rows go to `~/.yantrik-arena-R2.jsonl`, the log to a dotfile.
+
+**Before any graded cell (not graded):**
+- Check the socket's mtime and that exactly one yantrik-ui is running, after the OS update.
+- Drive one Mind turn by hand, to see that no act is refused over reach (#380: the Mind carries no role token, so no change is expected). A reach refusal stops the reading; it does not become a fail.
+
+**Reported:**
+- Per mind × task: k/n and Wilson, as `--reps` prints it.
+- Per mind overall: passes over all judged cells (up to 21) with a Wilson interval. This is descriptive only: cells of one mind are not independent across tasks.
+- False claims per mind, and voids by reason.
+
+**Predictions** (from D/E, where the Mind was 6/7 and 6/7 against Hermes 7/7 and 6/7):
+- The Mind's overall interval overlaps Hermes'.
+- The Mind has 0 false claims.
+- OpenClaw's T-LIE recurs.
+
+**What would count:**
+- "Best" is claimed only if the Mind's overall interval sits entirely above another mind's. Overlap is reported as "not separated".
+- Any Mind false claim is a finding, whatever the pass rate.
+- A mind that voids more than a third of its cells is reported as not measured, not ranked.
