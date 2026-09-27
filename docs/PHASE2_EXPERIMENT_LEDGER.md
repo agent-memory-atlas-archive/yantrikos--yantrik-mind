@@ -9547,3 +9547,41 @@ The loop tests' default home is `None`, so no other test depends on the machine 
 - Voids are shown by reason and kept out of the denominator. A rep that stops on a lock is reported as the reps it has.
 
 **Kill:** B1's T6 or T7 below B0's with non-overlapping intervals means F20/F21 is reverted from the candidate until it is understood.
+
+**R1 B0 result** (mind 7366051, OS 2c687eb, `--reps 10`; the control and preflight gates passed first):
+
+| Task | Pass | 95% interval | False claims | Voids | Median |
+|---|---|---|---|---|---|
+| T6 | 9/10 | 60–98% | 0 | 0 | 10.8 s |
+| T7 | 10/10 | 72–100% | 0 | 0 | 8.1 s |
+
+The baseline is near the ceiling, so B1 can show a regression but not an improvement. What I predicted for T7 cannot be seen at n=10.
+
+**The one miss (T6, run gpj), read from the journal:**
+- Step 4: `editor.new` returned "REFUSED — nothing was run … how the OS grades it could not be read" (the editor was not open).
+- Step 5: the mind opened the editor.
+- Steps 7 and 8: the same `new` was refused by the Mind's own done-guard ("already called with these args"), and the turn composed a description of the route instead of taking it.
+- F6b un-records a failed action, but this refusal starts "Done —" and was scored Ok.
+- F21's compose note would only have *said* the file is missing, so it is not the fix for this.
+
+Also, a harness note: the reset deletes `~/arena-*`, which unlinked a log I had named `~/arena-R1-B0.log` while it was being written. Arena logs go to dotfiles.
+
+## E.ARENA1-F22 — PREREG: a desktop call that "was not run" is not done
+
+**F22:** a desktop action whose result carries yos-mcp's `REFUSED — nothing was run` is not kept as done, whatever the outcome classifier scored it. The identical call sent later reaches the desktop again.
+- A person's answer (said no / no answer) is still stopped before it is sent, by F10's `already_answered`.
+- An immediate identical retry still meets the last-call nudge.
+- The barren guard still bounds a loop of identical refusals.
+
+**Kill criteria:**
+- the retry after `open_app` reaches the desktop (T6 run gpj's shape);
+- a call the person said no to is never sent twice;
+- a successful action stays deduplicated.
+
+**F22 result:**
+- `desktop::nothing_was_run` is checked in the loop beside F6b.
+- 2 loop tests, both with 520's own refusal sentences: the "is not open" retry reaches the desktop, while a call that ran and a call the person said no to are not sent again.
+- Three mutants, all watched to fail: F22 ignored, everything counted as "not run", and the F10 gate removed.
+- Full suite 2082 passed, 0 failed. This includes the #384 guard: two real `state:` captures leave the unsaved scrape working, checked by two mutants.
+
+**R1 amended before B1 ran:** B1 is the F22 commit (F20 + F21 + F22), not 209d766. B0 stands as recorded.

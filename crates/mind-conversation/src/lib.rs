@@ -13540,7 +13540,9 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             let outcome = guards::post(self, &guard_state, &tool, &obs).await;
             // E.ARENA1-F6b: a desktop action that failed is not "done" — it may be retried once the
             // world has changed (the loop's ordinary repeat nudge still meets an immediate retry).
-            if desktop::retry_after_failure(&tool, outcome == crate::tool_outcome::Outcome::Ok) {
+            // E.ARENA1-F22: "nothing was run" is not a success, however the classifier scored it.
+            let ran = outcome == crate::tool_outcome::Outcome::Ok && !desktop::nothing_was_run(&obs);
+            if desktop::retry_after_failure(&tool, ran) {
                 done_calls.remove(&call_sig);
             }
             if outcome == crate::tool_outcome::Outcome::Denied

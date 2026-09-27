@@ -197,6 +197,15 @@ pub(crate) fn retry_after_failure(tool: &str, succeeded: bool) -> bool {
     changes_the_desktop(tool) && !succeeded
 }
 
+/// E.ARENA1-F22: the desktop says the call did not happen. yos-mcp's refusals all begin
+/// `REFUSED — nothing was run.`; the mind's MCP wrapper puts "Done — " in front, and the outcome
+/// classifier scored that Ok -- so F6b never un-recorded it. R1 B0, T6: `editor.new` came back
+/// "not run" because the editor was not open, the mind opened it, and its own done-guard refused
+/// the retry twice. The file was never made.
+pub(crate) fn nothing_was_run(obs: &str) -> bool {
+    obs.contains("REFUSED \u{2014} nothing was run")
+}
+
 /// Desktop READS — the calls whose answer depends on the desktop's current state.
 const DESKTOP_READS: [&str; 3] = [
     "mcp.yantrik-os.os_describe",
@@ -853,6 +862,8 @@ mod tests {
         assert!(!retry_after_failure("mcp.yantrik-os.os_act", true), "a success stays deduplicated");
         assert!(!retry_after_failure("web_fetch", false), "off the desktop nothing changes");
         assert!(!retry_after_failure("mcp.yantrik-os.os_describe", false), "reads are handled by F6");
+        assert!(nothing_was_run("Done \u{2014} REFUSED \u{2014} nothing was run. refused: files.files_go was not run, because how the OS grades it could not be read: yos: no socket for 'files'"));
+        assert!(!nothing_was_run("Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"));
     }
 
     #[test]

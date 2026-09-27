@@ -17163,6 +17163,61 @@ mod desktop_consent_and_stall_wiring {
         assert!(unsaved.reply.contains(crate::desktop::UNSAVED_NOTE), "F12 still speaks: {}", unsaved.reply);
     }
 
+    /// yos-mcp's refusal for an action on an app that is not open, from the format string at
+    /// /opt/yantrik/bin/yos-mcp:1868 on VM 520 (app=editor, action=new), behind the mind's "Done — ".
+    const NOT_OPEN: &str = "Done \u{2014} REFUSED \u{2014} nothing was run. refused: editor is not open, so new was not run \u{2014} nothing is wrong with the request. Open it with os_act on shell: open_app name=editor (os_apps lists the exact name to open each app by), then call this again.";
+
+    /// E.ARENA1-F22, R1 B0's T6 miss: `new` was not run (editor closed), the mind opened the
+    /// editor, and the same `new` must now reach the desktop -- not be refused as already done.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_call_that_was_not_run_can_be_sent_again() {
+        let new = || Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"));
+        let r = run(
+            vec![
+                new(),
+                Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "shell", "action": "open_app", "args": {"name": "editor"}})),
+                new(),
+            ],
+            vec![SHELL],
+            vec![
+                NOT_OPEN,
+                "Done \u{2014} Text Editor \u{2014} Untitled (no file yet), 0 lines, saved",
+                "Done \u{2014} Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved \u{b7} tab 2 of 2",
+            ],
+        )
+        .await;
+        let reached: Vec<String> = reached_acts(&r).into_iter().map(|(_, a)| a).collect();
+        assert_eq!(reached, vec!["new".to_string(), "open_app".to_string(), "new".to_string()], "{:?}", r.reached);
+    }
+
+    /// F22's other side: an action that ran stays deduplicated, and one the person said no to is
+    /// never sent again (F10 stops it before the done-guard is asked).
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_call_that_ran_or_was_refused_by_the_person_is_not_sent_again() {
+        let new = || Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"));
+        let open = || Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "shell", "action": "open_app", "args": {"name": "notes"}}));
+        let ran = run(
+            vec![new(), open(), new()],
+            vec![SHELL],
+            vec![
+                "Done \u{2014} Text Editor \u{2014} Untitled (no file yet), 1 line, saved \u{b7} tab 2 of 2",
+                "Done \u{2014} Notes",
+            ],
+        )
+        .await;
+        let reached: Vec<String> = reached_acts(&ran).into_iter().map(|(_, a)| a).collect();
+        assert_eq!(reached, vec!["new".to_string(), "open_app".to_string()], "{:?}", ran.reached);
+        let set = || Step::Call("mcp.yantrik-os.os_act", act("editor", "set_content", "hello"));
+        let said_no = run(
+            vec![set(), open(), set()],
+            vec![SHELL],
+            vec![SAID_NO, "Done \u{2014} Notes"],
+        )
+        .await;
+        let reached: Vec<String> = reached_acts(&said_no).into_iter().map(|(_, a)| a).collect();
+        assert_eq!(reached, vec!["set_content".to_string(), "open_app".to_string()], "{:?}", said_no.reached);
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3: a reply to an INSTRUCTION ends without a get-to-know-you
     /// question; the same turn asked as a QUESTION still gets one, so the gate is the
     /// instruction and not the feature being off.
