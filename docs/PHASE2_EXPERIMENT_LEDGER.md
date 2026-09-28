@@ -10897,3 +10897,8 @@ There are two defects:
 **Mutants:**
 - M1 (the desktop's zone ignored) was watched to fail.
 - **M2 (the dispatch ignores `zone`) first survived.** The unit test called `now_in` directly. The dispatch test was added, and M2 then failed.
+
+**E.ARENA1-F37 — LIVE on 520** (0798ee8, sha256 7b4c5cd3445c8916, 17:21 CDT): "What time is it in Tokyo right now?"
+- Step 0: `now {zone: "Asia/Tokyo"}` → "2026-09-29 07:21 JST (Tuesday) in Asia/Tokyo. Here: 2026-09-28 17:21 CDT (Monday)". The person's own time now reads CDT, from the desktop's zone.
+- The reply, in 3.5 s: "It's Tuesday, 07:21 JST (Sep 29) in Tokyo right now — 14 hours ahead of your 17:21 CDT Monday."
+- The card count went from 2 to 3 (E.CARDS1). The immediate repeat at step 1 was answered from the work log and got no card.
