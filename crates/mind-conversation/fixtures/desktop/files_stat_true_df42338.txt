@@ -1,0 +1,10 @@
+Yantrik — desktop screen, 1 windows open, email, notes and perception not running
+accepted: True, settled: True
+revision: fedeb5d2b8bb32c4
+{
+  "exists": true,
+  "kind": "file",
+  "modified": 1790602795,
+  "path": "/home/yantrik/stat-demo.txt",
+  "size": 10
+}

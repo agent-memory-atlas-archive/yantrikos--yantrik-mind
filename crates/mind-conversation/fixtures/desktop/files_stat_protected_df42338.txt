@@ -1,0 +1,8 @@
+Yantrik — desktop screen, 1 windows open, email, notes and perception not running
+accepted: True, settled: True
+revision: 8a439c9146e88c28
+{
+  "exists": "unknown",
+  "path": "~/.ssh/id_ed25519",
+  "reason": "protected"
+}

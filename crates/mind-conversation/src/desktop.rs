@@ -821,6 +821,31 @@ fn classify_lookup(r: std::io::Result<()>) -> Option<bool> {
     }
 }
 
+/// E.HOME3: what the desktop says about a path (yantrik-os #442 `files_stat`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Stat {
+    There,
+    Missing,
+    /// Not allowed, outside the person's home, protected, a broken link, not a path -- the desktop
+    /// cannot say, and neither may the Mind.
+    Unknown,
+}
+
+/// E.HOME3: `files_stat`'s answer, read from the result object after the header lines.
+pub(crate) fn parse_files_stat(obs: &str) -> Option<Stat> {
+    let at = obs.find("\n{")? + 1;
+    let v: serde_json::Value = serde_json::Deserializer::from_str(&obs[at..])
+        .into_iter::<serde_json::Value>()
+        .next()?
+        .ok()?;
+    match v.get("exists")? {
+        serde_json::Value::Bool(true) => Some(Stat::There),
+        serde_json::Value::Bool(false) => Some(Stat::Missing),
+        serde_json::Value::String(s) if s == "unknown" => Some(Stat::Unknown),
+        _ => None,
+    }
+}
+
 /// E.ARENA1-F21: said once, before a turn ends with the requested path still missing.
 pub(crate) fn goal_nudge(step: usize, path: &str, missing_folder: Option<&str>) -> String {
     // E.ARENA1-F33: the concrete blocker, when the world shows one. The hard smoke's T9: the
@@ -1679,6 +1704,18 @@ mod tests {
         assert!(focused.len() < plain.len() + 3 * 700, "kept whole but bounded");
         assert_eq!(quoted_names("Open the notes app and don't close it"), Vec::<String>::new(), "no quotes, no focus");
         assert_eq!(quoted_names("Move \u{201c}Lunch with Sam\u{201d} to 2pm"), vec!["Lunch with Sam".to_string()]);
+    }
+
+    /// E.HOME3 on the real captures (520, df42338).
+    #[test]
+    fn the_desktops_file_answer_is_read_as_it_is_given() {
+        let f = |name: &str| std::fs::read_to_string(format!("{}/fixtures/desktop/files_stat_{name}_df42338.txt", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        assert_eq!(parse_files_stat(&f("true")), Some(Stat::There));
+        assert_eq!(parse_files_stat(&f("false")), Some(Stat::Missing));
+        assert_eq!(parse_files_stat(&f("protected")), Some(Stat::Unknown));
+        assert_eq!(parse_files_stat(&f("outside")), Some(Stat::Unknown));
+        assert_eq!(parse_files_stat(&format!("Done \u{2014} {}", f("false"))), Some(Stat::Missing), "with the Mind's own prefix");
+        assert_eq!(parse_files_stat("That didn't go through: execution failed"), None, "a refusal says nothing");
     }
 
     #[test]

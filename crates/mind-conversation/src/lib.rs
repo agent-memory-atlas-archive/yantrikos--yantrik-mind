@@ -7086,6 +7086,38 @@ impl ConversationEngine {
         (desktop::is_there(&at) == Some(false)).then_some(asked)
     }
 
+    /// E.HOME3: the path the request asked for, when it is still missing, and its folder when that
+    /// is missing too. As the person: the filesystem (F21/E.HOME1). As the minds' account: the
+    /// desktop's `files_stat` -- this process cannot see the person's files (ProtectHome), and only
+    /// the desktop's "not there" counts; anything it cannot say, the Mind does not say either.
+    async fn missing_goal_now(&self, user_text: &str, id: &TurnIdentity) -> Option<(String, Option<String>)> {
+        if !self.mind_account {
+            let path = self.missing_goal(user_text)?;
+            let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
+            return Some((path, folder));
+        }
+        if !self.desktop_attached() {
+            return None;
+        }
+        let asked = desktop::goal_path(user_text)?;
+        if self.desktop_stat(&asked, id).await != Some(desktop::Stat::Missing) {
+            return None;
+        }
+        let folder = match asked.rsplit_once('/') {
+            Some((parent, _)) if !parent.is_empty() && parent != "~" => {
+                (self.desktop_stat(parent, id).await == Some(desktop::Stat::Missing)).then(|| parent.to_string())
+            }
+            _ => None,
+        };
+        Some((asked, folder))
+    }
+
+    /// E.HOME3: ask the desktop about one path.
+    async fn desktop_stat(&self, path: &str, id: &TurnIdentity) -> Option<desktop::Stat> {
+        let args = serde_json::json!({"app": "shell", "action": "files_stat", "args": {"path": path}});
+        desktop::parse_files_stat(&self.run_agent_tool_as(desktop::ACT, &args, id).await)
+    }
+
     /// E.HOME1: the person's home -- the desktop's word for this turn, else this process's $HOME.
     fn person_home(&self) -> Option<String> {
         let told = PERSON_HOME.try_with(|h| h.clone()).ok();
@@ -13288,12 +13320,11 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                         continue;
                     }
                     a = format!("{a}\n\n{}", desktop::UNSAVED_NOTE);
-                } else if let Some(path) = self.missing_goal(user_text) {
+                } else if let Some((path, folder)) = self.missing_goal_now(user_text, id).await {
                     // E.ARENA1-F21: the world, not a result's first line, says the file is not there.
                     if !goal_nudged {
                         goal_nudged = true;
                         eprintln!("[agent] step {step}: answering with {path} still missing \u{2014} asking for it");
-                        let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
                         scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
                         continue;
                     }
@@ -13512,11 +13543,10 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     // E.ARENA1-F33: nor with the file the request asked for still missing -- say
                     // what is missing, and what blocks it, once, instead of composing.
                     if !unsaved_doc && !goal_nudged {
-                        if let Some(path) = self.missing_goal(user_text) {
+                        if let Some((path, folder)) = self.missing_goal_now(user_text, id).await {
                             goal_nudged = true;
                             barren = 0;
                             eprintln!("[agent] step {step}: repeats would end the turn with {path} missing \u{2014} saying so");
-                            let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
                             scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
                             continue;
                         }
@@ -13551,11 +13581,10 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     // E.ARENA1-F33: nor with the file the request asked for still missing -- say
                     // what is missing, and what blocks it, once, instead of composing.
                     if !unsaved_doc && !goal_nudged {
-                        if let Some(path) = self.missing_goal(user_text) {
+                        if let Some((path, folder)) = self.missing_goal_now(user_text, id).await {
                             goal_nudged = true;
                             barren = 0;
                             eprintln!("[agent] step {step}: repeats would end the turn with {path} missing \u{2014} saying so");
-                            let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
                             scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
                             continue;
                         }
@@ -13957,7 +13986,7 @@ The answer travels inside a JSON string, so newlines and quotes must be         
         // E.ARENA1-F12: a turn that ended with its document unsaved says so, whatever compose wrote.
         if unsaved_doc {
             ans = format!("{ans}\n\n{}", desktop::UNSAVED_NOTE);
-        } else if let Some(path) = self.missing_goal(user_text) {
+        } else if let Some((path, _)) = self.missing_goal_now(user_text, id).await {
             // E.ARENA1-F21: the requested path is still missing, whatever compose wrote.
             ans = format!("{ans}\n\n{}", desktop::goal_missing_note(&path));
         }

@@ -1,0 +1,8 @@
+Yantrik — desktop screen, 1 windows open, email, notes and perception not running
+accepted: True, settled: True
+revision: 15bbd84d3d156206
+{
+  "exists": "unknown",
+  "path": "/etc/passwd",
+  "reason": "outside"
+}

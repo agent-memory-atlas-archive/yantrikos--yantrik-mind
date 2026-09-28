@@ -17286,7 +17286,35 @@ mod desktop_consent_and_stall_wiring {
         assert!(!untold.reply.contains("Nothing is at"), "claimed missing against its own home: {}", untold.reply);
         assert!(!untold.prompts.iter().any(|p| p.contains(&format!("home folder on this computer is {}", mind.to_string_lossy()))), "told the model its own home is the person's");
         assert!(!hidden.reply.contains("Nothing is at"), "claimed missing for a home it cannot see: {}", hidden.reply);
-        assert!(visible.reply.contains("Nothing is at ~/x.txt yet"), "a visible told home still gets F21: {}", visible.reply);
+        // E.HOME3 superseded E.HOME2's "visible told home" case: under the minds' account the
+        // desktop decides (`files_stat`), never this process's filesystem -- with no desktop answer
+        // scripted here, nothing is claimed even for a visible home.
+        assert!(!visible.reply.contains("Nothing is at"), "the filesystem was used under the minds' account: {}", visible.reply);
+    }
+
+    /// E.HOME3 through the loop, on the desktop's real `files_stat` answers (520, df42338): under the
+    /// minds' account the desktop is asked; only its "not there" is missing.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn under_the_minds_account_the_desktop_says_whether_the_file_is_there() {
+        const T: &str = include_str!("../fixtures/desktop/files_stat_true_df42338.txt");
+        const F: &str = include_str!("../fixtures/desktop/files_stat_false_df42338.txt");
+        const P: &str = include_str!("../fixtures/desktop/files_stat_protected_df42338.txt");
+        let new = "Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved";
+        let wrote = || vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))];
+        let ask = "Create a text file at ~/x.txt containing hello";
+        let stats = |r: &Run| r.reached.iter().filter(|(_, a)| a["action"] == "files_stat").count();
+        let missing = run_as(ask, None, true, wrote(), vec![SHELL], vec![new, F, F]).await;
+        assert!(missing.prompts.iter().any(|p| p.contains("nothing is at ~/x.txt yet")), "not nudged on the desktop's 'not there'");
+        assert!(missing.reply.contains("Nothing is at ~/x.txt yet"), "{}", missing.reply);
+        let there = run_as(ask, None, true, wrote(), vec![SHELL], vec![new, T]).await;
+        assert!(!there.reply.contains("Nothing is at"), "{}", there.reply);
+        assert_eq!(stats(&there), 1, "the desktop was asked");
+        let cannot = run_as(ask, None, true, wrote(), vec![SHELL], vec![new, P]).await;
+        assert!(!cannot.reply.contains("Nothing is at"), "an unknown was taken for missing: {}", cannot.reply);
+        let folder = run_as("Save a text file at ~/d/notes.txt containing exactly this line: kept safe", None, true, wrote(), vec![SHELL], vec![new, F, F, F, F]).await;
+        assert!(folder.prompts.iter().any(|p| p.contains("The folder ~/d does not exist yet")), "the missing folder was not named");
+        let person = run_as(ask, None, false, wrote(), vec![SHELL], vec![new]).await;
+        assert_eq!(stats(&person), 0, "a Mind running as the person keeps its own check");
     }
 
     /// F21's kill criteria: a file that is there, a request that names no path, a delete, and a

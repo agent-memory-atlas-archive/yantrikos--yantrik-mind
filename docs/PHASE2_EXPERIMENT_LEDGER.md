@@ -10164,3 +10164,22 @@ F17 already gives one more step at this exit when a document is unsaved. F21 kno
 **It is not a clean replay, through my test design.** I had deleted the test folder between the two turns of the same conversation. The Mind remembered its earlier save, found the folder gone, and asked what to do; that was honest. A clean replay needs a fresh conversation.
 
 **The arena waited 301 s:** the idle lock fired at about 07:45 while `ask()` was waiting, and wait_idle cannot see "idle" on a locked desktop. It was not a request card (my first guess was wrong). Reported to yantrik-os-f4.
+
+## E.HOME3 — PREREG: under the minds' account, the desktop says whether a file is there
+
+yantrik-os #442 adds `shell.files_stat path=`: `exists: true` (kind, size, modified), `false` (`not_found`), or `"unknown"` with a reason (`not_allowed`, `outside`, `protected`, `broken_link`, `not_a_path`). Real captures from 520 (df42338), through `/opt/yantrik/bin/yos-mcp`, are the fixtures `files_stat_{true,false,protected,outside}_df42338.txt`. They stop before the `state:` line, which the capture file had trimmed.
+
+**E.HOME3:** under the minds' account, F21 and F33 ask the desktop with `files_stat` instead of the Mind's filesystem (which ProtectHome hides). Only `exists: false` counts as missing, and every `unknown` says nothing. F33 names the parent folder only when `files_stat` says the parent is not there too. A Mind running as the person keeps the filesystem check.
+
+**Kill criteria, on the real captures:**
+- false: the nudge, then the note.
+- true: nothing.
+- protected/unknown: nothing.
+- a missing folder: named.
+- Not under the minds' account: no `files_stat` call.
+
+**E.HOME3 result:**
+- `parse_files_stat`, and an async `missing_goal_now` (filesystem as the person; `files_stat` under the minds' account, with the parent asked about only when the file is missing), at all four call sites.
+- A loop test on the real captures: false gives the nudge and the note; true, nothing; protected, nothing; a missing folder is named; as the person, no `files_stat` call. Plus a parser test on all four captures.
+- E.HOME2's "visible told home" assertion is updated: E.HOME3 supersedes it, and under the minds' account the filesystem is never the witness.
+- Four mutants, all watched to fail. Full suite 2110 passed, 0 failed.

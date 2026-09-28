@@ -1,0 +1,8 @@
+Yantrik — desktop screen, 1 windows open, email, notes and perception not running
+accepted: True, settled: True
+revision: 74975ae5690555ab
+{
+  "exists": false,
+  "path": "/home/yantrik/stat-demo-missing.txt",
+  "reason": "not_found"
+}
