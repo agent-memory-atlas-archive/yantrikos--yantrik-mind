@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","id":1,"method":"app.act","params":{"action":"memory_validate","args":{"memory_sha256":"c8a46b7a68c82fd884d11df0794932bd99e62c109a1caa97b31969c46380bdf7"}}}

@@ -16,6 +16,7 @@
 //! does not need to. The service manager, not good intentions, keeps the two from overlapping —
 //! the standalone unit declares `Conflicts=` with Mind's.
 
+pub mod door;
 mod server;
 
 use std::net::SocketAddr;

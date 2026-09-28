@@ -1,0 +1,1 @@
+{"jsonrpc":"2.0","result":{"accepted":true,"action_id":"app-shell#6","app":"shell","result":null,"revision":"76cfe3b9087259a5","settled":true,"state":{},"summary":"Yantrik — desktop screen, 2 windows open, email, notes and perception not running"},"id":1}

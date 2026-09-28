@@ -129,6 +129,70 @@ pub fn attach_in_background(mem: MemoryHandle, conv: Arc<ConversationEngine>) {
 // The client
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 
+/// One reply line from the desktop: its `result`, or its error message. Outside `wire` so it is
+/// tested on every platform.
+fn parse_reply(line: &str) -> Result<serde_json::Value, String> {
+    if line.trim().is_empty() {
+        return Err("the desktop closed the connection without answering".into());
+    }
+    // E.SEC-POLL: a poll reply carries this conversation's agent token and memory credential, and
+    // this error is logged -- so what is echoed has every long hex run masked.
+    let reply: serde_json::Value = serde_json::from_str(line)
+        .map_err(|e| format!("parse: {e} — got: {}", masked(line.trim())))?;
+    if let Some(err) = reply.get("error") {
+        let msg = err
+            .get("message")
+            .and_then(|m| m.as_str())
+            .unwrap_or("unknown error");
+        return Err(msg.to_string());
+    }
+    Ok(reply.get("result").cloned().unwrap_or(serde_json::Value::Null))
+}
+
+/// E.SEC-POLL: a desktop reply made safe to log -- every run of 16+ hex digits (agent tokens,
+/// memory credentials) replaced by `<hex:N>`, and at most 200 characters kept.
+fn masked(line: &str) -> String {
+    let mut out = String::new();
+    let mut run = String::new();
+    let flush = |run: &mut String, out: &mut String| {
+        if run.len() >= 16 {
+            out.push_str(&format!("<hex:{}>", run.len()));
+        } else {
+            out.push_str(run);
+        }
+        run.clear();
+    };
+    for c in line.chars() {
+        if c.is_ascii_hexdigit() {
+            run.push(c);
+        } else {
+            flush(&mut run, &mut out);
+            out.push(c);
+        }
+    }
+    flush(&mut run, &mut out);
+    out.chars().take(200).collect()
+}
+
+#[cfg(test)]
+mod reply_tests {
+    use super::parse_reply;
+
+    /// E.SEC-POLL: a malformed poll reply is reported, and neither secret it carried is.
+    #[test]
+    fn a_malformed_reply_is_reported_without_its_secrets() {
+        let token = "0123456789abcdef0123456789abcdef";
+        let cred = format!("mem-{}", "a1".repeat(32));
+        let line = format!(r#"{{"jsonrpc":"2.0","id":1,"result":{{"turn_id":7,"agent_token":"{token}","memory_credential":"{cred}""#);
+        let err = parse_reply(&line).unwrap_err();
+        assert!(err.starts_with("parse:"), "{err}");
+        assert!(!err.contains(token) && !err.contains(&cred[4..]), "a secret reached the log line: {err}");
+        assert!(err.contains("<hex:32>") && err.contains("mem-<hex:64>"), "{err}");
+        assert_eq!(parse_reply(r#"{"result":{"ok":true}}"#).unwrap()["ok"], true);
+        assert_eq!(parse_reply(r#"{"error":{"message":"no such session"}}"#).unwrap_err(), "no such session");
+    }
+}
+
 #[cfg(unix)]
 mod wire {
     use std::io::{BufRead, BufReader, Write};
@@ -169,19 +233,7 @@ mod wire {
         BufReader::new(stream)
             .read_line(&mut line)
             .map_err(|e| format!("read: {e}"))?;
-        if line.trim().is_empty() {
-            return Err("the desktop closed the connection without answering".into());
-        }
-        let reply: serde_json::Value = serde_json::from_str(&line)
-            .map_err(|e| format!("parse: {e} — got: {}", line.trim()))?;
-        if let Some(err) = reply.get("error") {
-            let msg = err
-                .get("message")
-                .and_then(|m| m.as_str())
-                .unwrap_or("unknown error");
-            return Err(msg.to_string());
-        }
-        Ok(reply.get("result").cloned().unwrap_or(serde_json::Value::Null))
+        super::parse_reply(&line)
     }
 
     /// Where the desktop's harness socket is, if it is anywhere.

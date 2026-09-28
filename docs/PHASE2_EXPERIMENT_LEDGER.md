@@ -10425,3 +10425,62 @@ The door client that produces an `Agent` caller comes after the real 520 capture
 - M5: forget a belief it only shares.
 
 **Still unreachable:** `MemoryServer::for_agent` has no caller outside tests until the door client, which comes after the 520 capture.
+
+## E.SEC-POLL — PREREG: a malformed reply from the desktop never puts a secret in the log
+
+This was found while checking that #449's `memory_credential` never reaches a log. `wire::call` answers a reply it cannot parse with `parse: <error> — got: <the whole line>`, and the poll loop logs that as `[harness] poll failed: …`. A poll reply carries `agent_token` (32 hex), and after #449 `memory_credential` (`mem-` + 64 hex).
+
+**This is reachable, not observed.** It needs the desktop to send a line that isn't valid JSON, and I have no instance of that.
+
+**E.SEC-POLL:** the echoed line has every run of 16 or more hex digits masked, and is cut to 200 characters. The parse error and the shape stay visible for debugging.
+
+**Kill criterion:** a malformed line carrying both secrets yields an error that contains neither, but still says `parse:`.
+
+## E.DOOR1 — PREREG: the memory server asks the desktop, on the bytes the desktop really speaks
+
+yantrik-os #447 item (3), the client, built on f4's real capture from 520 (#448, 05ff164). Fixtures `crates/mind-memory-mcp/fixtures/memory_validate_{request,unknown,refused}_05ff164.txt`.
+
+**What the bytes showed:**
+- Newline-delimited JSON-RPC 2.0 on `$YANTRIK_MIND_RUN/app-shell.sock`.
+- The request is `app.act` with `params {action: "memory_validate", args: {memory_sha256}}`, and **no `app` key**: the socket is the shell's own.
+- The answer is at `result.result`: `null` for unknown, the pinned object when valid. It arrives inside the standard act envelope, which also carries the whole shell `state` (the unknown-sha reply was 34,686 bytes).
+- A non-mind caller gets a JSON-RPC `error`.
+- In the committed fixture `state` is emptied, since it's the person's desktop and f4 says not to depend on it. Every other byte is as captured.
+
+**E.DOOR1:**
+- `credential_sha256` is SHA-256 of the *trimmed* credential, lowercase hex, as `reach::token_digest`.
+- The request line is equal, as JSON, to the captured one.
+- `read_answer`:
+  - `result.result` null → unknown;
+  - an object → valid;
+  - an `error`, an empty line or garbage → failure, which the caller treats as no footing (fail closed).
+- `Validator`:
+  - caches a valid footing for no longer than its `valid_for_ms` (capped at 5 s);
+  - never caches unknown or failure;
+  - `revoke(sha)` drops the cache entry;
+  - an answer for another person is no footing (E.GRANT1).
+- Socket I/O times out at 250 ms.
+
+**Kill criteria:**
+- Request equality with the capture.
+- Unknown and refused read as captured.
+- A reply the size of the capture parses.
+- The cache is bounded and never holds a null.
+- Revoke works.
+- The validity of the live case waits for #449: that object shape is pinned from f4's text, not yet from bytes.
+
+**E.SEC-POLL — RESULT:** `a_malformed_reply_is_reported_without_its_secrets` holds. A malformed line carrying a 32-hex token and a `mem-` credential yields `parse: … <hex:32> … mem-<hex:64>`, with neither secret in it. Mutant (echo the raw line) watched to fail. Reply parsing moved out of the unix-only `wire` module into `parse_reply`, so the test runs on every platform.
+
+**E.DOOR1 — RESULT: built on the capture, and every kill criterion held** (`crates/mind-memory-mcp/src/door.rs`, 4 tests):
+- the request equals the capture, with no `app` key;
+- the digest is SHA-256 of the trimmed credential (FIPS vector);
+- unknown reads `None`, and refused reads as failure;
+- a 40 KB reply still parses;
+- "no answer" is failure, not unknown;
+- a live answer is cached inside `valid_for_ms` and dropped by `revoke`;
+- null and failure are never cached;
+- another person's answer is no footing.
+
+**Mutants:** M1 (untrimmed), M2 (app key), M3 (no answer = unknown) and M5 (revoke no-op) were each watched to fail. **M4 (cache a zero-window answer) survived, and is equivalent:** such an entry expires at the moment it's stored, so the next lookup asks again. **The 5 s `MAX_TRUST` cap is untested,** since a test would have to sleep.
+
+**Not yet exercised:** the valid object's bytes wait for #449 on 520. Full suite: 2129 passed, 0 failed.

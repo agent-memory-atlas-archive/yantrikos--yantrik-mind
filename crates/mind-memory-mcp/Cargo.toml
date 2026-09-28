@@ -10,6 +10,8 @@ path = "src/main.rs"
 
 [dependencies]
 mind-memory = { workspace = true }
+# E.DOOR1: a credential crosses the door only as its SHA-256.
+sha2 = "0.10"
 mind-types = { workspace = true }
 # 1.2.0 exactly: the version Yantrik OS already builds, read from source for the streamable
 # HTTP server API used below rather than assumed from a newer release's docs.
