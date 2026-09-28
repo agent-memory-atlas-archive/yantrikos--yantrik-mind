@@ -10183,3 +10183,10 @@ yantrik-os #442 adds `shell.files_stat path=`: `exists: true` (kind, size, modif
 - A loop test on the real captures: false gives the nudge and the note; true, nothing; protected, nothing; a missing folder is named; as the person, no `files_stat` call. Plus a parser test on all four captures.
 - E.HOME2's "visible told home" assertion is updated: E.HOME3 supersedes it, and under the minds' account the filesystem is never the witness.
 - Four mutants, all watched to fail. Full suite 2110 passed, 0 failed.
+
+**E.HOME3 live (07df303 on 520, 08:51), "Save a text file at ~/home3-check/notes.txt …", in a folder the Mind had never seen:**
+- F33 fired ("repeats would end the turn with ~/home3-check/notes.txt missing — saying so").
+- The model then described the steps (make the folder, open the editor, `new`, `save_as`) and did not take them.
+- The closing note "(Nothing is at … yet — it was not created.)" was **true** this time: the desktop's `files_stat` said not_found, and the file was not there. E.HOME3 does what it should.
+
+**The open problem:** on two live tries of this shape the model finished one (07:31) and narrated one (08:51). F33's nudge ends "…or say plainly that it was not made", and the model took that exit. **Next candidate (not built):** F33's nudge without the escape clause, when the desktop has shown the path is actionable (the parent is reachable, the editor exists). This needs a measured before/after on several tries, not one live turn.
