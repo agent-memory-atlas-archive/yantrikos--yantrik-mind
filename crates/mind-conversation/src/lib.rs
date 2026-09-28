@@ -12867,6 +12867,9 @@ Open reminders you're carrying for them:",
         let mut ceiling_noted: std::collections::HashSet<String> = std::collections::HashSet::new();
         // E.ARENA1-F26: each desktop action that RAN this turn, with its result's first line.
         let mut made: Vec<(serde_json::Value, String)> = Vec::new();
+        // E.ARENA1-F36: each app's latest revision, and each act's revision from its own reply.
+        let mut app_rev: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+        let mut act_rev: std::collections::HashMap<String, String> = std::collections::HashMap::new();
         // E.LOOP1 MEASUREMENT, not a bound. Two diagnoses of the 29-step runaway were wrong, and
         // the third candidate — a per-tool retrieval budget — must not be a third guess. This
         // records what a turn ACTUALLY did so the budget can be chosen from turns rather than from
@@ -13561,7 +13564,13 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             // …and if it is identical to ANY earlier call this turn, not just the last one. A model
             // that alternates A, B, A, B never trips the last-call check but learns nothing after the
             // second pass. Re-serve the earlier result from the log rather than paying for it twice.
-            if done_calls.contains(&call_sig) {
+            // E.ARENA1-F36: the same act after its app has moved is a new act.
+            let moved_since = tool == desktop::ACT
+                && !desktop::still_current(desktop::app_of(&tool, &args).as_deref(), act_rev.get(&call_sig), &app_rev);
+            if moved_since && done_calls.contains(&call_sig) {
+                eprintln!("[agent] step {step}: {tool} again, but its app has changed since \u{2014} running it");
+            }
+            if done_calls.contains(&call_sig) && !moved_since {
                 eprintln!("[agent] step {step}: {tool} already called with these args — reusing the work log");
                 match desktop::repeated_action_note(&tool, &args, unsaved_doc, desktop::requested_path(user_text).as_deref()) {
                     Some(note) => scratch.push_str(&format!("\n[{step}] {tool} -> {note}")),
@@ -13636,7 +13645,13 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     true,
                     desktop::requested_path(user_text).as_deref(),
                 )
-            } else if let Some(note) = desktop::same_change_again(&tool, &args, &made) {
+            } else if let Some(note) = desktop::same_change_again(&tool, &args, &{
+                // E.ARENA1-F36: only changes their app has not moved past since.
+                made.iter()
+                    .filter(|(a, _)| desktop::still_current(desktop::app_of(desktop::ACT, a).as_deref(), act_rev.get(&format!("{}|{a}", desktop::ACT)), &app_rev))
+                    .cloned()
+                    .collect::<Vec<_>>()
+            }) {
                 // E.ARENA1-F26: a change already made, re-sent with a field more or less.
                 eprintln!("[agent] step {step}: {tool} is a change already made this turn \u{2014} not sent");
                 Some(note)
@@ -13778,6 +13793,15 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             }
             if sent && ran && tool == desktop::ACT {
                 made.push((args.clone(), obs.lines().next().unwrap_or("").to_string()));
+            }
+            // E.ARENA1-F36: what the app now is, and what this act left it as.
+            if sent {
+                if let (Some(app), Some(rev)) = (desktop::app_of(&tool, &args), desktop::revision_of(&obs)) {
+                    if tool == desktop::ACT {
+                        act_rev.insert(call_sig.clone(), rev.clone());
+                    }
+                    app_rev.insert(app, rev);
+                }
             }
             if outcome == crate::tool_outcome::Outcome::Denied
                 && self

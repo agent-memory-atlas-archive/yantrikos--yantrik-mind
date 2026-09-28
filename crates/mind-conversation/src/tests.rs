@@ -17568,6 +17568,45 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
     }
 
+    /// E.ARENA1-F36, take 7 (520, 14:55): a save after a new draft is a new save -- the editor moved
+    /// in between -- and a further identical save with nothing in between is still a repeat.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_same_save_after_a_new_draft_runs_again() {
+        let act = |action: &str, args: serde_json::Value| Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "editor", "action": action, "args": args}));
+        let reply = |head: &str, rev: &str| format!("{head}\naccepted: True, settled: True\nrevision: {rev}\nstate: {{}}");
+        let (a, b, c, d) = (
+            reply("Text Editor \u{2014} Untitled (no file yet), 1 line, unsaved \u{b7} tab 2 of 2", "313471d5a1"),
+            reply("Text Editor \u{2014} scene-plan.txt, 1 line, saved \u{b7} tab 2 of 2 \u{b7} Saved", "5b0e22c7a2"),
+            reply("Text Editor \u{2014} Untitled (no file yet), 2 lines, unsaved \u{b7} tab 3 of 3", "c983aa01a3"),
+            reply("Text Editor \u{2014} scene-plan.txt, 2 lines, saved \u{b7} tab 3 of 3 \u{b7} Saved", "e41f0b77a4"),
+        );
+        let r = run_with(
+            "Write a short plan in the Editor and save it as ~/scene-plan.txt",
+            vec![
+                act("new", serde_json::json!({"text": "plan"})),
+                act("save_as", serde_json::json!({"path": "~/scene-plan.txt"})),
+                act("new", serde_json::json!({"text": "plan, second draft"})),
+                act("save_as", serde_json::json!({"path": "~/scene-plan.txt", "overwrite": true})),
+                act("save_as", serde_json::json!({"path": "~/scene-plan.txt", "overwrite": true})),
+            ],
+            vec![SHELL, SHELL, SHELL, SHELL, SHELL, SHELL],
+            vec![&a, &b, &c, &d, &d],
+        )
+        .await;
+        let saves = |r: &Run| r.reached.iter().filter(|(t, a)| t.ends_with("os_act") && a["action"] == "save_as").count();
+        assert_eq!(saves(&r), 2, "the save after the new draft must run, and the save after that must not");
+        // Byte-identical saves (the repeat guard's own case, not only F26's): the same.
+        let same = || act("save_as", serde_json::json!({"path": "~/scene-plan.txt"}));
+        let r = run_with(
+            "Write a short plan in the Editor and save it as ~/scene-plan.txt",
+            vec![act("new", serde_json::json!({"text": "plan"})), same(), act("new", serde_json::json!({"text": "plan, second draft"})), same(), same()],
+            vec![SHELL, SHELL, SHELL, SHELL, SHELL, SHELL],
+            vec![&a, &b, &c, &d, &d],
+        )
+        .await;
+        assert_eq!(saves(&r), 2, "an identical save after a new draft must run, and the one after it must not");
+    }
+
     /// E.ARENA1-F35, 520 turn 433, on the real bytes: after run_python is refused above the
     /// machine's limit, the model is shown Blender's own actions within it -- once per app per turn,
     /// even when a second refusal is sent.

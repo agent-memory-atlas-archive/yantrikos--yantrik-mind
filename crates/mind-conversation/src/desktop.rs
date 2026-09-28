@@ -499,6 +499,35 @@ pub(crate) fn lower_grade_twin(
     })
 }
 
+/// E.ARENA1-F36: the app-state revision a desktop reply reports (`revision: <hex>`, on its own line
+/// in act and describe replies). The same act after this has moved is a new act.
+pub(crate) fn revision_of(obs: &str) -> Option<String> {
+    let rest = obs.split("revision: ").nth(1)?;
+    let rev: String = rest.chars().take_while(|c| c.is_ascii_alphanumeric()).collect();
+    (!rev.is_empty()).then_some(rev)
+}
+
+/// E.ARENA1-F36: the app an act or describe is about.
+pub(crate) fn app_of(tool: &str, args: &serde_json::Value) -> Option<String> {
+    if tool == ACT || tool == DESCRIBE {
+        return args.get("app").and_then(|a| a.as_str()).map(str::to_string);
+    }
+    None
+}
+
+/// E.ARENA1-F36: is an act still the latest thing its app has seen? True while the app's revision is
+/// the one that act's own reply reported -- and when either is unknown, as before F36.
+pub(crate) fn still_current(
+    app: Option<&str>,
+    act_rev: Option<&String>,
+    app_rev: &std::collections::HashMap<String, String>,
+) -> bool {
+    match (act_rev, app.and_then(|a| app_rev.get(a))) {
+        (Some(then), Some(now)) => then == now,
+        _ => true,
+    }
+}
+
 /// E.ARENA1-F35: an action the desktop refused because it is graded above this machine's ceiling.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct CeilingRefusal {

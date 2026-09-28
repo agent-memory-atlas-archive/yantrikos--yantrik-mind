@@ -10732,3 +10732,39 @@ yantrik-os #464 (live on 520, yos sha256 54947317…12df) fixes the desktop half
 - The name filter itself is equivalent: a grade refusal means the action is above the limit.
 
 **Also seen live, before F35 existed (take 6, 14:50, f4):** worded "build it step by step in Blender", the Mind went new_scene → add_primitive ×2 → set_light → set_material → set_camera → set_render → render, and produced a real PNG. The typed route works; F35 is what points a model at it after a refusal.
+
+## E.ARENA1-F36 — PREREG: the same act after the app has changed is a new act
+
+**Seen live on 520** (take 7, 14:55, sent by yantrik-os-f4; the request asked for a plan saved as `~/scene-plan.txt`, then a Blender scene):
+- Steps 4–5: editor `new` (the plan), then `save_as ~/scene-plan.txt`. Fine.
+- Step 10: `new` again, a second draft in a new tab ("tab 3 of 3, Untitled, unsaved").
+- Steps 13–16: `save_as {"overwrite":true,"path":"~/scene-plan.txt"}` four times, each answered "already called with these args — reusing the work log". The new tab was never saved, and the turn ended without touching Blender.
+
+**Cause:** two guards key on the arguments alone. The repeat guard uses `(tool, args)`, and F26's "a change already made" treats a superset of the arguments as the same change. The editor's revision had moved between the two saves.
+
+**F36:**
+- Every desktop reply's `revision:` is recorded per app.
+- Each act records the revision from **its own reply**.
+- An act identical to an earlier one (repeat guard), or the same change again (F26), is treated as a repeat **only while its app's revision is still the one that act's own reply reported**. Once anything has moved the app, it runs.
+- Keying on the act's own reply keeps a further identical save blocked, since that save's reply resets the mark.
+- Reads keep F6's rule.
+
+**Kill criteria**, through the loop:
+- `new` → `save_as P` → `new` → `save_as {overwrite, P}` sends both saves.
+- A third save_as with nothing in between is not sent.
+- With no revision in the replies, behaviour is exactly as before.
+
+**E.ARENA1-F36 — RESULT: built, and every kill criterion held.** Full suite: 2142 passed, 0 failed.
+
+**`the_same_save_after_a_new_draft_runs_again`**, in two scenarios through the loop:
+- `new` → `save_as P` → `new` → `save_as {overwrite, P}` → the same again: 2 saves sent.
+- Byte-identical `save_as P` throughout: 2 saves sent.
+
+In both, the save after the new draft runs, and the one after it, with nothing in between, doesn't.
+
+**Mutants, each watched to fail:**
+- M1: the repeat guard ignores revisions. Caught by the byte-identical scenario.
+- M2: F26 ignores revisions. Caught by the superset scenario.
+- M3: no act revision recorded.
+
+Without revisions in the replies, the whole existing suite behaves as before.
