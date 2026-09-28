@@ -10668,3 +10668,32 @@ yantrik-os #457, from the research sweep #459: admit claims by evidence, not rep
 **Equivalent:** the `via == "mcp"` filter. No non-MCP writer passes an author today.
 
 **Not in v1:** in-process repetition, and #457's consolidation-authority half.
+
+## E.ARENA1-F34 — PREREG: an app that is still starting is waited for, not given up on
+
+**Seen live on 520** (turn 424, 13:30, sent by yantrik-os-f4): "build and render a Blender scene".
+- The Mind ran `open_app blender` (accepted, `settled: false`) and described Blender 1.5 s later.
+- yos answered "blender is not running … Open it first". Blender binds its socket about 8.7 s after opening.
+- The Mind re-opened it, hit the repeat guard, and ended the turn saying Blender "was not running when checked".
+
+yantrik-os #464 (live on 520, yos sha256 54947317…12df) fixes the desktop half: with the app's window listed, yos waits up to 15 s and then answers. Past 15 s the reply (real bytes, fixture `describe_blender_starting_54947317.txt`) is an MCP error whose **first line is yos-mcp's generic `failed (exit 1)`**. The sentence is on line 2: "…is open but still starting … Nothing needs opening again — describe blender again in a few seconds." F30's wait-and-look-again keys on "loading" in the first line only, so this reply would reach the model as a plain failure.
+
+**F34:** a describe answered "is open but still starting" (anywhere in the reply) is looked at once more after 3 s, with F30's once-per-app limit. The model is shown the second look, with "do not open it again". Acts are not repeated automatically, because they have side effects.
+
+**Kill criteria**, on the real bytes:
+- The starting reply is followed by exactly one more describe, and the model sees the later look.
+- A second starting reply for the same app in the same turn is not re-looked.
+- An ordinary failure ("not running") is not re-looked.
+
+**E.ARENA1-F34 — RESULT: built, and every kill criterion held on the real bytes.** Full suite: 2139 passed, 0 failed.
+
+**`a_starting_app_is_described_once_more`:**
+- The starting reply is followed by exactly one more describe, and the model sees "Looked again 3.0 s later: Blender — …".
+- With an act between two starting describes, the note appears once.
+- An ordinary "no socket" failure isn't re-looked.
+
+**Mutants:**
+- M1 (not recognised) was watched to fail.
+- M2 (no once-per-app limit) **first survived**. The test's two describes were identical and in a row, so the second was answered from the work log and never reached the rule. The test was fixed with an act between them, as F30's test does, plus an assertion that the second describe was sent. M2 then failed as it should.
+
+**What f4's re-run showed (turn 428, fresh yos-mcp with #464's first commit):** F23b's settle-look (which *describes* the opened app) still reported Blender "not running" about 1.5 s after `open_app`. Most likely the shell didn't list Blender's window yet, so yos had nothing to wait for. That's under investigation, with timings asked of f4. F34 covers only the case where a window is listed and the app is past 15 s.

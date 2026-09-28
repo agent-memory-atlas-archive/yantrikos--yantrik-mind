@@ -681,6 +681,27 @@ pub(crate) fn still_loading(obs: &str) -> bool {
     head.to_ascii_lowercase().contains("loading")
 }
 
+/// E.ARENA1-F34 (yantrik-os #464): the app's window is up but it has not answered yet. The desktop
+/// has already waited 15 s and says to describe again -- not a failure, and nothing to open again.
+/// The sentence is on the reply's second line (the first is yos-mcp's generic "failed (exit 1)").
+pub(crate) fn still_starting(obs: &str) -> bool {
+    obs.contains("is open but still starting")
+}
+
+/// E.ARENA1-F34: how long to wait before describing a starting app again.
+pub(crate) const STARTING_WAIT_MS: u64 = if cfg!(test) { 0 } else { 3000 };
+
+/// E.ARENA1-F34: the starting reply, with what a second look found.
+pub(crate) fn started_since(obs: &str, seen: &str) -> String {
+    let head = seen.lines().next().unwrap_or("");
+    let head = head.split(" revision:").next().unwrap_or(head).trim();
+    format!(
+        "{obs}\n(it was still starting. Looked again {:.1} s later: {head}. Use this, and do not \
+         open it again.)",
+        STARTING_WAIT_MS.max(3000) as f64 / 1000.0
+    )
+}
+
 /// E.ARENA1-F30: how long to wait before describing a loading app again.
 pub(crate) const LOADING_WAIT_MS: u64 = if cfg!(test) { 0 } else { 2000 };
 

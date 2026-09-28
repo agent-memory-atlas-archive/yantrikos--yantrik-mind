@@ -13711,11 +13711,19 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 None => obs,
             };
             // E.ARENA1-F30: the app said it was still loading -- look once more after a moment.
-            let loading_app = (sent && tool == desktop::DESCRIBE && desktop::still_loading(&obs))
+            // E.ARENA1-F34: or its window is up and it has not answered yet (yantrik-os #464).
+            let starting = desktop::still_starting(&obs);
+            let loading_app = (sent && tool == desktop::DESCRIBE && (starting || desktop::still_loading(&obs)))
                 .then(|| args.get("app").and_then(|a| a.as_str()).map(str::to_string))
                 .flatten()
                 .filter(|app| relooked.insert(app.clone()));
             let obs = match loading_app {
+                Some(app) if starting => {
+                    tokio::time::sleep(std::time::Duration::from_millis(desktop::STARTING_WAIT_MS)).await;
+                    let seen = self.run_agent_tool_as(desktop::DESCRIBE, &args, id).await;
+                    eprintln!("[agent] step {step}: {app} was still starting \u{2014} looked again");
+                    desktop::started_since(&obs, &seen)
+                }
                 Some(app) => {
                     tokio::time::sleep(std::time::Duration::from_millis(desktop::LOADING_WAIT_MS)).await;
                     let seen = self.run_agent_tool_as(desktop::DESCRIBE, &args, id).await;

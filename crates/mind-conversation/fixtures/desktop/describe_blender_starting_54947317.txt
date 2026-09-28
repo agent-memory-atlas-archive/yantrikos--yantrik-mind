@@ -1,0 +1,2 @@
+failed (exit 1)
+yos: blender is open but still starting: its window is on the desktop and it has not answered for 15 s. Nothing needs opening again — describe blender again in a few seconds.

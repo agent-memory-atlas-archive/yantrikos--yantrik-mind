@@ -16688,8 +16688,15 @@ mod desktop_consent_and_stall_wiring {
             destructive: false,
             input_schema: serde_json::json!({"type": "object"}),
         };
-        let script_of =
-            |v: Vec<&str>| v.into_iter().map(|s| Ok(s.to_string())).collect::<Vec<_>>();
+        // "ERR:" makes a scripted reply an MCP error, as the desktop's isError replies are.
+        let script_of = |v: Vec<&str>| {
+            v.into_iter()
+                .map(|s| match s.strip_prefix("ERR:") {
+                    Some(e) => Err(e.to_string()),
+                    None => Ok(s.to_string()),
+                })
+                .collect::<Vec<_>>()
+        };
         hub.add_scripted_tool(tool("os_describe"), script_of(describes)).unwrap();
         hub.add_scripted_tool(tool("os_act"), script_of(acts)).unwrap();
         let conv = ConversationEngine::new(memarc, pool, "YM").with_mcp(hub.clone()).with_home_dir(home).with_mind_account(mind_account);
@@ -17559,6 +17566,35 @@ mod desktop_consent_and_stall_wiring {
         // list no actions), so the raw count measures the fixture. F30's note is what must appear once.
         let last = twice.prompts.iter().rev().find(|p| p.contains("Work log")).cloned().unwrap_or_default();
         assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
+    }
+
+    /// E.ARENA1-F34, 520 turn 424 and yantrik-os #464, on the real bytes: an app that is still
+    /// starting is described once more and the model sees that look; not twice; and an ordinary
+    /// failure is not re-looked.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_starting_app_is_described_once_more() {
+        const STARTING: &str = include_str!("../fixtures/desktop/describe_blender_starting_54947317.txt");
+        let starting = format!("ERR:{STARTING}");
+        let d = || Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "blender"}));
+        let looks = |r: &Run| r.reached.iter().filter(|(t, _)| t.ends_with("os_describe")).count();
+        let r = run_with("Build and render a Blender scene", vec![d()], vec![&starting, "Blender \u{2014} scene.blend, 3 objects\nrevision: 2\n{}"], vec!["UNUSED"]).await;
+        assert!(r.prompts.iter().any(|p| p.contains("Looked again 3.0 s later: Blender \u{2014} scene.blend")), "the later look never reached the model");
+        assert_eq!(looks(&r), 2, "one describe plus exactly one more");
+        // An act between the two describes, so the second is SENT (an identical call in a row is
+        // answered from the work log and never reaches the rule).
+        let act = Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "blender", "action": "render"}));
+        let twice = run_with(
+            "Build and render a Blender scene",
+            vec![d(), act, d()],
+            vec![&starting, &starting, &starting, &starting, &starting, &starting],
+            vec!["Done \u{2014} Blender \u{2014} rendering"],
+        )
+        .await;
+        assert!(looks(&twice) >= 3, "the second describe was never sent -- the test does not reach the rule");
+        let last = twice.prompts.iter().rev().find(|p| p.contains("Work log")).cloned().unwrap_or_default();
+        assert_eq!(last.matches("it was still starting").count(), 1, "a starting app was looked at again twice in one turn");
+        let closed = run_with("Build and render a Blender scene", vec![d()], vec!["ERR:failed (exit 1)\nyos: no socket for 'blender'", "UNUSED"], vec!["UNUSED"]).await;
+        assert_eq!(looks(&closed), 1, "an ordinary failure was looked at again");
     }
 
     /// E.ARENA1-F13, VM 520 turn 3, and E.ASK1: a reply ends without a get-to-know-you question --
