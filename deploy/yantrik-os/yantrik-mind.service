@@ -29,6 +29,10 @@ Environment=YM_WEB=off
 # (yantrik-os #411) any of them could read the pairing code and chat as the person. Off unless its
 # owner turns it on.
 Environment=YM_WEBUI=off
+# The control endpoint (127.0.0.1:8077, console token) runs every `ym` command and the chat API as
+# the owner. Nothing on a desktop needs it, and a token file any same-account mind can read is not
+# a boundary. Off unless its owner turns it on.
+Environment=YM_CTL=off
 EnvironmentFile=-%h/.config/yantrik-mind.env
 ExecStartPre=/usr/bin/mkdir -p %h/.local/share/yantrik-mind %h/.config
 ExecStart=/opt/yantrik-mind/bin/yantrik-mind
