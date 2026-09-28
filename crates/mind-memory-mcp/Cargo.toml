@@ -26,3 +26,7 @@ serde_json = { workspace = true }
 anyhow = { workspace = true }
 tracing = { workspace = true }
 tracing-subscriber = { workspace = true }
+
+[dev-dependencies]
+# E.DOOR2: drive the real middleware in-process.
+tower = { version = "0.5", features = ["util"] }

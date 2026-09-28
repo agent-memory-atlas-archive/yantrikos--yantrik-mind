@@ -10484,3 +10484,47 @@ yantrik-os #447 item (3), the client, built on f4's real capture from 520 (#448,
 **Mutants:** M1 (untrimmed), M2 (app key), M3 (no answer = unknown) and M5 (revoke no-op) were each watched to fail. **M4 (cache a zero-window answer) survived, and is equivalent:** such an entry expires at the moment it's stored, so the next lookup asks again. **The 5 s `MAX_TRUST` cap is untested,** since a test would have to sleep.
 
 **Not yet exercised:** the valid object's bytes wait for #449 on 520. Full suite: 2129 passed, 0 failed.
+
+## E.DOOR2 — PREREG: each request is served as the caller the desktop vouched for
+
+yantrik-os #447 item (3), the switch-over wiring.
+
+**The middleware:** the memory server's HTTP middleware authenticates every request.
+- The machine token → `Caller::MachineToken`, today's path, kept until the OS retires it.
+- A `mem-` bearer → validated through `door::Validator` → `Caller::Agent(footing)`, or 401.
+
+The caller rides in the HTTP request's extensions. rmcp carries the request `Parts` into the tool call, and a hand-written `call_tool` (replacing the `#[tool_handler]` macro's version) serves each call on a per-request clone of the server carrying that caller.
+
+**Fail closed:** an HTTP-served server that finds no caller on a request refuses it.
+
+**Off unless the unit says whose Mind this is.** A `mem-` bearer is accepted only when `YANTRIK_PERSON_UID` (the person's uid) and `YANTRIK_MIND_RUN` (the door) are both set. Without them it is refused, and nothing changes on 520 or staging today. The OS unit sets them in #447's step (d), after the live capture of #449 checks out.
+
+**Kill criteria**, through the real middleware:
+- The machine token is served as `MachineToken`.
+- A `mem-` bearer the validator accepts is served as that Agent.
+- One it doesn't know, or any `mem-` bearer with no validator, gets 401.
+- No bearer gets 401.
+- A tool call with no caller on an HTTP-served server is refused.
+
+**E.DOOR2 — RESULT: built, and every kill criterion held.** Full suite: 2132 passed, 0 failed.
+
+**Tests:**
+- **`each_request_is_served_as_the_caller_the_desktop_vouched_for`** (real middleware):
+  - the token → machine;
+  - `mem-good` → `agent:hermes`;
+  - an unknown credential and no bearer → 401;
+  - a credential with no validator → 401.
+- **`an_http_call_without_a_caller_is_refused`:** over HTTP, no request or no caller is refused; the request's Agent is served; stdio keeps the machine token.
+- **`an_mcp_call_reaches_the_tool_as_the_vouched_caller`** (rmcp's real streamable-HTTP service, a real session: initialize, then initialized, then `tools/call beliefs`):
+  - the `mem-` call reached the tool as the Agent, refused for `recall_ordinary`;
+  - the machine token's call returned its result.
+
+  This is what proves the two halves meet, and that rmcp's `Parts` is axum's `http` type.
+
+**Mutants, each watched to fail:**
+- M1: the middleware drops the caller.
+- M2: a call ignores its request's caller.
+- M3: an HTTP call with no caller is served as the default.
+- M4: a credential with no validator gets the machine's view.
+
+**Off in every deployment today.** A `mem-` bearer is honoured only when the unit sets `YANTRIK_PERSON_UID` and `YANTRIK_MIND_RUN`. The live answer's bytes still wait for #449.
