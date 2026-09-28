@@ -191,7 +191,21 @@ mod wire {
     /// are returned — a missing socket is the normal state of a machine with no desktop up, not a
     /// failure to report.
     pub fn socket() -> Option<String> {
-        if let Ok(explicit) = std::env::var("YANTRIK_HARNESS_SOCKET") {
+        super::socket_from(
+            std::env::var("YANTRIK_HARNESS_SOCKET").ok(),
+            std::env::var("YANTRIK_MIND_RUN").ok(),
+            std::env::var("XDG_RUNTIME_DIR").ok(),
+        )
+    }
+}
+
+/// The search behind `socket()`, with the two overrides passed in so tests need not touch the
+/// process environment.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn socket_from(explicit: Option<String>, mind_run: Option<String>, runtime_dir: Option<String>) -> Option<String> {
+    use std::path::PathBuf;
+    {
+        if let Some(explicit) = explicit {
             let explicit = explicit.trim();
             if !explicit.is_empty() {
                 // Named outright: honour it and look nowhere else, so pointing this mind at a
@@ -200,9 +214,20 @@ mod wire {
                 return p.exists().then(|| p.display().to_string());
             }
         }
+        // yantrik-os #411: a mind running under its own account is given the minds' door (the
+        // unit sets YANTRIK_MIND_RUN=/run/yantrik-minds). It is the only place this mind may
+        // attach, so it is honoured outright -- never a fall-through to the person's runtime dir
+        // or /tmp, where a socket this account can reach would be somebody else's.
+        if let Some(dir) = mind_run {
+            let dir = dir.trim();
+            if !dir.is_empty() {
+                let p = PathBuf::from(dir).join("harness.sock");
+                return p.exists().then(|| p.display().to_string());
+            }
+        }
 
         let mut candidates: Vec<PathBuf> = Vec::new();
-        if let Ok(dir) = std::env::var("XDG_RUNTIME_DIR") {
+        if let Some(dir) = runtime_dir {
             let dir = dir.trim();
             if !dir.is_empty() {
                 candidates.push(PathBuf::from(dir).join("yantrik"));
@@ -223,6 +248,36 @@ mod wire {
             .map(|d| d.join("harness.sock"))
             .find(|p| p.exists())
             .map(|p| p.display().to_string())
+    }
+}
+
+#[cfg(test)]
+mod door_tests {
+    use super::socket_from;
+
+    /// yantrik-os #411: YANTRIK_MIND_RUN names the minds' door, and nothing else is searched.
+    #[test]
+    fn the_minds_door_is_the_only_place_looked() {
+        let d = std::env::temp_dir().join(format!("ym-door-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&d);
+        std::fs::create_dir_all(&d).unwrap();
+        let door = d.to_string_lossy().into_owned();
+        // The person's runtime dir has a socket (the old search would take it); the door does not.
+        let person = d.join("person");
+        std::fs::create_dir_all(person.join("yantrik")).unwrap();
+        std::fs::write(person.join("yantrik").join("harness.sock"), b"").unwrap();
+        let person_dir = Some(person.to_string_lossy().into_owned());
+        assert!(socket_from(None, None, person_dir.clone()).is_some(), "control: without a door, the runtime dir is found");
+        let door_only = d.join("door");
+        std::fs::create_dir_all(&door_only).unwrap();
+        assert_eq!(socket_from(None, Some(door_only.to_string_lossy().into_owned()), person_dir), None,
+                   "a door with no socket must not fall through to the person's");
+        std::fs::write(d.join("harness.sock"), b"").unwrap();
+        assert_eq!(socket_from(None, Some(door.clone()), None), Some(d.join("harness.sock").display().to_string()));
+        let explicit = d.join("harness.sock").display().to_string();
+        assert_eq!(socket_from(Some(explicit.clone()), Some("/nowhere".into()), None), Some(explicit), "an explicit socket still wins");
+        assert_eq!(socket_from(None, Some("  ".into()), None), socket_from(None, None, None), "a blank door is no door");
+        let _ = std::fs::remove_dir_all(&d);
     }
 }
 
