@@ -672,6 +672,22 @@ pub(crate) fn on_this_machine(path: &str, home: Option<&str>) -> Option<std::pat
     }
 }
 
+/// E.HOME1: is something at `at`? `Some(false)` only when the filesystem says it is not there;
+/// `None` when it cannot say -- a permission error is not absence. Under yantrik-os #411 the Mind
+/// runs as its own account and may not read the person's files, and `Path::exists` would have
+/// answered "missing" for every one of them.
+pub(crate) fn is_there(at: &std::path::Path) -> Option<bool> {
+    classify_lookup(std::fs::metadata(at).map(|_| ()))
+}
+
+fn classify_lookup(r: std::io::Result<()>) -> Option<bool> {
+    match r {
+        Ok(()) => Some(true),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Some(false),
+        Err(_) => None,
+    }
+}
+
 /// E.ARENA1-F21: said once, before a turn ends with the requested path still missing.
 pub(crate) fn goal_nudge(step: usize, path: &str) -> String {
     format!(
@@ -1326,6 +1342,17 @@ mod tests {
     }
 
     /// E.ARENA1-F21: which requests have a path to check, and where it is.
+    /// E.HOME1: only NotFound is absence; a permission error says nothing.
+    #[test]
+    fn only_not_found_is_missing() {
+        use std::io::{Error, ErrorKind};
+        assert_eq!(classify_lookup(Ok(())), Some(true));
+        assert_eq!(classify_lookup(Err(Error::from(ErrorKind::NotFound))), Some(false));
+        assert_eq!(classify_lookup(Err(Error::from(ErrorKind::PermissionDenied))), None, "not allowed to look is not missing");
+        assert_eq!(classify_lookup(Err(Error::other("io"))), None);
+        assert_eq!(is_there(std::path::Path::new("/ym-home1-nowhere/x.txt")), Some(false));
+    }
+
     #[test]
     fn a_goal_is_a_path_the_request_asks_to_have_made() {
         let t7 = "Write the titles of my calendar events on Friday into a new file ~/arena-x-friday.txt, one title per line.";

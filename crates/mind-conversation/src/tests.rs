@@ -17183,6 +17183,42 @@ mod desktop_consent_and_stall_wiring {
         assert!(!seen.lock().unwrap().iter().any(|p| p.contains("it was not created")), "nudged without a desktop");
     }
 
+    /// E.HOME1: with the desktop's word for home, "~" resolves there and not against the Mind's own
+    /// home -- the #411 shape, where $HOME is /var/lib/yantrik-mind.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_persons_home_is_the_desktops_word() {
+        let person = fresh_home("person");
+        let mind = fresh_home("mindacct");
+        std::fs::write(mind.join("x.txt"), "decoy\n").unwrap();
+        let r = crate::with_person_home(
+            Some(person.to_string_lossy().into_owned()),
+            run_at(
+                "Create a text file at ~/x.txt containing hello",
+                Some(mind.to_string_lossy().into_owned()),
+                vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))],
+                vec![SHELL],
+                vec!["Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"],
+            ),
+        )
+        .await;
+        // A lookup that fails for any reason but "not found" says nothing. A NUL in the path is the
+        // portable stand-in for "not allowed to look" (EACCES is not portable to the Windows suite):
+        // the filesystem refuses the question rather than answering "absent".
+        let cannot_look = run_at(
+            "Create a text file at ~/a\u{0}b.txt containing hello",
+            Some(mind.to_string_lossy().into_owned()),
+            vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))],
+            vec![SHELL],
+            vec!["Done \u{2014} Text Editor \u{2014} a.txt, 1 line, saved"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&person);
+        let _ = std::fs::remove_dir_all(&mind);
+        assert!(!cannot_look.reply.contains("Nothing is at"), "a failed lookup was reported as absence: {}", cannot_look.reply);
+        assert!(r.reply.contains("Nothing is at ~/x.txt yet"), "resolved against the Mind's home, where a decoy is: {}", r.reply);
+        assert!(r.prompts.iter().any(|p| p.contains(&format!("home folder on this computer is {}", person.to_string_lossy()))), "the model was told the wrong home");
+    }
+
     /// F21's kill criteria: a file that is there, a request that names no path, a delete, and a
     /// document F12 already says is unsaved -- none of them hears F21.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

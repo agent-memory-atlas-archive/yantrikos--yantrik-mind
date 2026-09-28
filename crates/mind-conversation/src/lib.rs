@@ -4451,6 +4451,20 @@ tokio::task_local! {
     static HANDOVER: String;
 }
 
+tokio::task_local! {
+    /// E.HOME1: the person's home folder as the desktop reports it for this turn
+    /// (`context.machine.home`). Under yantrik-os #411 the Mind's own $HOME is not the person's.
+    static PERSON_HOME: String;
+}
+
+/// E.HOME1: run `fut` knowing the person's home, if the desktop said it.
+pub async fn with_person_home<F: std::future::Future>(home: Option<String>, fut: F) -> F::Output {
+    match home.map(|h| h.trim().to_string()).filter(|h| !h.is_empty()) {
+        Some(h) => PERSON_HOME.scope(h, fut).await,
+        None => fut.await,
+    }
+}
+
 /// E.ARENA1-F28: run `fut` with this turn's hand-over, if it came with one.
 pub async fn with_handover<F: std::future::Future>(block: Option<String>, fut: F) -> F::Output {
     match block {
@@ -7036,8 +7050,14 @@ impl ConversationEngine {
             return None;
         }
         let asked = desktop::goal_path(user_text)?;
-        let at = desktop::on_this_machine(&asked, self.home_dir.as_deref())?;
-        (!at.exists()).then_some(asked)
+        let at = desktop::on_this_machine(&asked, self.person_home().as_deref())?;
+        // E.HOME1: only "not found" is missing; not being allowed to look says nothing.
+        (desktop::is_there(&at) == Some(false)).then_some(asked)
+    }
+
+    /// E.HOME1: the person's home -- the desktop's word for this turn, else this process's $HOME.
+    fn person_home(&self) -> Option<String> {
+        PERSON_HOME.try_with(|h| h.clone()).ok().or_else(|| self.home_dir.clone())
     }
 
     /// Load the plugin manifest (enable/disable + security overlay) from a JSON file and remember the
@@ -12893,7 +12913,7 @@ Open reminders you're carrying for them:",
             let place = format!(
                 "{}{}{}",
                 machine_place_line(),
-                desktop::home_sentence(self.desktop_attached(), self.home_dir.as_deref()),
+                desktop::home_sentence(self.desktop_attached(), self.person_home().as_deref()),
                 desktop::desktop_sentence(self.desktop_attached())
             );
             let prompt = format!(

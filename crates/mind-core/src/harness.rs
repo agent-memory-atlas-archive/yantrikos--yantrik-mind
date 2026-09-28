@@ -355,13 +355,16 @@ async fn serve(
             let mem = mem.clone();
             let conv = conv.clone();
             let from_context = turn["context"].as_str().and_then(handover_from_context);
+            // E.HOME1: the person's home as the desktop reports it (#411: not this process's $HOME).
+            let home = turn["context"].as_str().and_then(machine_home);
             if from_context.is_some() {
                 // The raw context once, so the journal can show #394's shape as it really arrives.
                 let raw: String = turn["context"].as_str().unwrap_or_default().chars().take(4000).collect();
                 eprintln!("[harness] turn {turn_id}: hand-over in the context: {raw}");
             }
-            let mut thinking =
-                tokio::spawn(async move { take_turn(&mem, &conv, &text, from_context).await });
+            let mut thinking = tokio::spawn(async move {
+                mind_conversation::with_person_home(home, take_turn(&mem, &conv, &text, from_context)).await
+            });
             // A turn can outlast the desktop's 90-second presence window, and this loop does not
             // poll while it thinks: "Write a note titled Shopping…" took 93 seconds and the
             // desktop reported "mind stopped responding" to a mind that was mid-answer. An empty
@@ -465,6 +468,18 @@ pub(crate) fn attach_payload(detail: &str) -> serde_json::Value {
         // unknown fields) and keeps prefixing, which `split_handover` still handles.
         "handover_context": true,
     })
+}
+
+/// E.HOME1: the person's home folder from a turn's context (`machine.home`), as the desktop asked
+/// for it under yantrik-os #411 reports it.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn machine_home(context: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(context).ok()?;
+    v["machine"]["home"]
+        .as_str()
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+        .map(str::to_string)
 }
 
 /// E.ARENA1-F28 / yantrik-os #394: the hand-over paragraph from a turn's context, when the desktop
@@ -577,6 +592,17 @@ mod handover_tests {
 #[cfg(test)]
 mod machine_place_tests {
     use super::machine_place;
+
+    /// E.HOME1, from #411's agreed shape (no build sends it yet; replace with a capture when one
+    /// does). Today's real context has no `home`: nothing is claimed.
+    #[test]
+    fn the_persons_home_is_read_from_the_context() {
+        assert_eq!(super::machine_home(r#"{"machine":{"home":"/home/yantrik","timezone":"UTC"}}"#).as_deref(), Some("/home/yantrik"));
+        let real = include_str!("../../mind-conversation/fixtures/desktop/context_handover_ce8c715.json").trim();
+        assert_eq!(super::machine_home(real), None, "today's desktop does not send it");
+        assert_eq!(super::machine_home(r#"{"machine":{"home":"  "}}"#), None);
+        assert_eq!(super::machine_home("not json"), None);
+    }
 
     #[test]
     fn the_desktop_context_becomes_a_place_in_words() {

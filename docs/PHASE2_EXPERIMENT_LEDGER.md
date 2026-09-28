@@ -9976,3 +9976,36 @@ It does not check for a delegated background job in flight.
 - A question turn ("what is on my calendar today?") ends with no "Btw".
 - A captured answer is acknowledged with no question and leaves nothing pending.
 - `prepare_ask` returns nothing while a background job runs.
+
+## E.HOME1 — PREREG: "~" is the person's home, and "missing" means not found (for yantrik-os #411)
+
+**Why:** under #411 the Mind runs as `yantrik-mind` (HOME=/var/lib/yantrik-mind) and cannot read the person's files. Today:
+- F21 resolves the person's "~/x" against the Mind's own `$HOME`;
+- home_sentence tells the model that home is the person's;
+- `Path::exists` returns false on EACCES, so every file task would end "(Nothing is at ~/x yet)" when the Mind simply may not look.
+
+The EACCES case is wrong today too, for any unreadable path.
+
+**E.HOME1:**
+1. F21 claims "missing" only when the filesystem says NotFound. Any other error (permission, I/O) says nothing.
+2. The person's home comes from the desktop: the turn's `context.machine.home` (asked of yantrik-os-f4 for #411), carried per turn in a task-local like the hand-over.
+3. home_sentence and F21 use it, falling back to the Mind's `$HOME` when the desktop does not send one.
+
+**Kill criteria:**
+- A permission error never produces the note.
+- NotFound still does.
+- With a desktop home, "~" resolves against it and not against `$HOME`.
+- Without one, behaviour is unchanged.
+
+**E.HOME1 result:**
+- `desktop::is_there` gives `Some(false)` only on NotFound. The person's home comes through a task-local set by the harness from `context.machine.home`, with `$HOME` as the fallback.
+- **Tests:**
+  - The classifier (NotFound, PermissionDenied and other errors).
+  - A loop test where the Mind's own home holds a decoy `x.txt` and the desktop's home does not: the note fires, and the prompt names the desktop's home.
+  - A NUL-byte path as the portable stand-in for "cannot look": no note.
+  - `machine_home` on the agreed shape, and on today's real context, which has no `home`: None.
+- **Mutants, all watched to fail:**
+  - "desktop home ignored".
+  - "unknown counted as missing", which survived until the NUL-path case was added.
+- Full suite 2098 passed, 0 failed.
+- Tested from #411's agreed shape; to be replaced by a real capture when a build sends `machine.home`.
