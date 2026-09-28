@@ -10902,3 +10902,13 @@ There are two defects:
 - Step 0: `now {zone: "Asia/Tokyo"}` → "2026-09-29 07:21 JST (Tuesday) in Asia/Tokyo. Here: 2026-09-28 17:21 CDT (Monday)". The person's own time now reads CDT, from the desktop's zone.
 - The reply, in 3.5 s: "It's Tuesday, 07:21 JST (Sep 29) in Tokyo right now — 14 hours ahead of your 17:21 CDT Monday."
 - The card count went from 2 to 3 (E.CARDS1). The immediate repeat at step 1 was answered from the work log and got no card.
+
+## E.ARENA1-F38 — PREREG: a screen read is stale after an act
+
+yantrik-os #478 (merged as bbab102, reaching 520 in the next nightly) adds `os_screen`, the whole screen as ~1 KB of text, to yos-mcp. F32 already offers it to the model, since it starts with `os_`. But F6's list of desktop reads that an act makes stale names `os_describe`, `os_apps` and `os_perception` only. So "look at the screen, act, look again" would be answered from the work log with the screen from **before** the act, the exact bug F6 fixed for describes.
+
+**F38:** `os_screen` joins F6's desktop reads.
+
+**Kill criterion:** after an act, the `os_screen` entry is gone from the done set, and a non-desktop read is kept.
+
+**E.ARENA1-F38 — RESULT:** `a_screen_read_is_forgotten_after_an_act` holds. It was watched to fail on the old three-entry list. Full suite: 2148 passed, 0 failed. Installed on 520 together with #478's nightly, as one restart.

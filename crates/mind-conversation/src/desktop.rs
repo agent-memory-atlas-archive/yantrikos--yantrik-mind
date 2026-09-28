@@ -309,10 +309,12 @@ pub(crate) fn nothing_was_run(obs: &str) -> bool {
 }
 
 /// Desktop READS — the calls whose answer depends on the desktop's current state.
-const DESKTOP_READS: [&str; 3] = [
+const DESKTOP_READS: [&str; 4] = [
     "mcp.yantrik-os.os_describe",
     "mcp.yantrik-os.os_apps",
     "mcp.yantrik-os.os_perception",
+    // E.ARENA1-F38 (yantrik-os #478): the whole screen as text -- stale after an act like the rest.
+    "mcp.yantrik-os.os_screen",
 ];
 
 /// E.ARENA1-F6: forget earlier desktop reads, because an action just changed what they describe.
@@ -1646,6 +1648,17 @@ mod tests {
             assert!(!note.contains(above), "{above} is above a standard limit: {note}");
         }
         assert_eq!(ceiling_refusal("REFUSED \u{2014} nothing was run. refused: shell.files_create_folder was not run, because how the OS grades it could not be read"), None, "another refusal");
+    }
+
+    /// E.ARENA1-F38 (yantrik-os #478): a screen read is stale after an act, like any desktop read --
+    /// "look, act, look again" must look again, not be handed the screen from before the act.
+    #[test]
+    fn a_screen_read_is_forgotten_after_an_act() {
+        let mut done: std::collections::HashSet<String> =
+            ["mcp.yantrik-os.os_screen|{}".to_string(), "web_search|{\"q\":\"x\"}".to_string()].into_iter().collect();
+        forget_desktop_reads(&mut done);
+        assert!(!done.contains("mcp.yantrik-os.os_screen|{}"), "the pre-act screen would be served again");
+        assert!(done.contains("web_search|{\"q\":\"x\"}"), "a non-desktop read was forgotten");
     }
 
     #[test]
