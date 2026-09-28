@@ -10034,3 +10034,20 @@ The EACCES case is wrong today too, for any unreadable path.
 - The hub gains `with_env` and `set_server_env`. The engine gains `set_desktop_agent_token` (it does nothing without a connected desktop server). The harness applies each turn's `agent_token` before thinking.
 - The test runs a real Python MCP server (reporting its `YANTRIK_AGENT_TOKEN`) through the hub: it reports none, then tok-1, then no restart for the same token, then tok-2. Tools are not duplicated, and an unknown server is an error.
 - The harness call site is unix-only and verified live: the yos-mcp child's environment carries the token after a turn (its length only, never its value).
+
+## E.ARENA1-F30 — PREREG: an app that says it is loading gets one more look
+
+**Seen on 520 (Mind bae1353, OS 6605586), turn 390, "Open the weather app":**
+1. `open_app` came back unsettled, and F23 looked again.
+2. The model described Weather, whose first line said "Weather — loading …".
+3. Its identical second describe was held by the repeat guard, since nothing had changed.
+4. It answered "still loading".
+
+A minute later `describe weather` said "15°C in London". The service answers; the Mind read too early and could not look again.
+
+**F30:** when an `os_describe`'s first line (the app's own summary) says it is loading, the loop waits 2 s, describes the same app once more, and adds that later first line to the result. It does this at most once per app per turn.
+
+**Kill criteria:**
+- A loading describe is followed by one more describe, and its later line reaches the model.
+- A describe that is not loading gets nothing extra.
+- A second loading describe of the same app in the same turn is not looked at again.

@@ -17375,6 +17375,42 @@ mod desktop_consent_and_stall_wiring {
         assert!(!outside.prompts.iter().any(|p| p.contains("Earlier on this desktop")), "a hand-over leaked outside its turn");
     }
 
+    /// E.ARENA1-F30, 520's turn 390: Weather described while loading is looked at once more, and
+    /// the model is shown the loaded summary; a second loading describe of it is not re-looked.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_loading_app_is_described_once_more() {
+        let d = || Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "weather"}));
+        let r = run_with(
+            "What is the weather?",
+            vec![d()],
+            vec!["Weather \u{2014} loading ...\nrevision: 1\n{}", "Weather \u{2014} 15\u{b0}C in London, Overcast\nrevision: 2\n{}"],
+            vec!["UNUSED"],
+        )
+        .await;
+        assert!(r.prompts.iter().any(|p| p.contains("Looked again 2.0 s later: Weather \u{2014} 15\u{b0}C in London")), "the later look never reached the model");
+        let looks = |r: &Run| r.reached.iter().filter(|(t, _)| t.ends_with("os_describe")).count();
+        assert_eq!(looks(&r), 2, "one describe plus exactly one more");
+        let ready = run_with(
+            "What is the weather?",
+            vec![d()],
+            vec!["Weather \u{2014} 15\u{b0}C in London\nrevision: 2\n{}", "UNUSED"],
+            vec!["UNUSED"],
+        )
+        .await;
+        assert_eq!(looks(&ready), 1, "an app that is not loading is not looked at again");
+        let twice = run_with(
+            "What is the weather?",
+            vec![d(), Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "weather", "action": "refresh"})), d()],
+            vec!["Weather \u{2014} loading ...", "Weather \u{2014} loading ...", "Weather \u{2014} loading ...", "Weather \u{2014} loading ..."],
+            vec!["Done \u{2014} Weather \u{2014} loading ..."],
+        )
+        .await;
+        // Count the rule, not the describes: F15 also describes Weather before the act (these fixtures
+        // list no actions), so the raw count measures the fixture. F30's note is what must appear once.
+        let last = twice.prompts.iter().rev().find(|p| p.contains("Work log")).cloned().unwrap_or_default();
+        assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
+    }
+
     /// E.ARENA1-F13, VM 520 turn 3, and E.ASK1: a reply ends without a get-to-know-you question --
     /// to an instruction (F13), and now to a question too, on the owner's word ("it asks for my
     /// personal details … that should be in an idle time").

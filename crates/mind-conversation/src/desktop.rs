@@ -571,6 +571,28 @@ pub(crate) fn settle_look(tool: &str, args: &serde_json::Value) -> Option<serde_
     Some(serde_json::json!({"app": opened.unwrap_or(&app)}))
 }
 
+/// E.ARENA1-F30: the app's own summary says it has not finished loading. 520, turn 390: Weather's
+/// first line was "Weather — loading …"; a minute later it said "15°C in London".
+pub(crate) fn still_loading(obs: &str) -> bool {
+    let head = obs.lines().next().unwrap_or("");
+    let head = head.split(" revision:").next().unwrap_or(head);
+    head.to_ascii_lowercase().contains("loading")
+}
+
+/// E.ARENA1-F30: how long to wait before describing a loading app again.
+pub(crate) const LOADING_WAIT_MS: u64 = if cfg!(test) { 0 } else { 2000 };
+
+/// E.ARENA1-F30: the loading description, with what a second look found.
+pub(crate) fn loaded_since(obs: &str, seen: &str) -> String {
+    let head = seen.lines().next().unwrap_or("");
+    let head = head.split(" revision:").next().unwrap_or(head).trim();
+    format!(
+        "{obs}\n(it said it was still loading. Looked again {:.1} s later: {head}. Use this, not the \
+         first line above.)",
+        LOADING_WAIT_MS.max(2000) as f64 / 1000.0
+    )
+}
+
 /// E.ARENA1-F23: the unsettled result, with what a second look found. Seen on 185b4c0: the Mind
 /// told the person "the weather app was not opened" from a first line that still said "0 windows
 /// open" -- it was open; and on T5 read an unsettled `files_go` as a failure and never reached
@@ -1478,6 +1500,16 @@ mod tests {
         assert_eq!(same_change_again(ACT, &text, &[(empty, "Done".into())]), None, "no arguments matches nothing");
         assert_eq!(same_change_again(ACT, &again, &[]), None, "nothing ran yet");
         assert_eq!(same_change_again(DESCRIBE, &again, &made), None);
+    }
+
+    /// E.ARENA1-F30 on 520's real first line (turn 390).
+    #[test]
+    fn a_loading_app_is_recognised_by_its_own_summary() {
+        assert!(still_loading("Weather \u{2014} loading ... revision: 1cf0963ee3e2b9f6 {"));
+        assert!(!still_loading("Weather \u{2014} 15\u{b0}C in London, Overcast, feels like 14\u{b0}C\nrevision: 57a1"));
+        assert!(!still_loading("Files \u{2014} 21 entries\n{\"loading\": true}"), "only the first line, the app's own summary");
+        let later = loaded_since("Weather \u{2014} loading ...", "Weather \u{2014} 15\u{b0}C in London\nrevision: 1");
+        assert!(later.contains("Looked again 2.0 s later: Weather \u{2014} 15\u{b0}C in London"), "{later}");
     }
 
     #[test]

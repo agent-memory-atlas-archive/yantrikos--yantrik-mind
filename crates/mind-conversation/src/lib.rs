@@ -12791,6 +12791,8 @@ Open reminders you're carrying for them:",
         let mut unsaved_nudged = false;
         // E.ARENA1-F21: the one reminder that the path the request asked for is still missing.
         let mut goal_nudged = false;
+        // E.ARENA1-F30: apps already looked at again this turn because they said they were loading.
+        let mut relooked: std::collections::HashSet<String> = std::collections::HashSet::new();
         // E.ARENA1-F26: each desktop action that RAN this turn, with its result's first line.
         let mut made: Vec<(serde_json::Value, String)> = Vec::new();
         // E.LOOP1 MEASUREMENT, not a bound. Two diagnoses of the 29-step runaway were wrong, and
@@ -13613,6 +13615,20 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     desktop::record_described(&look, &seen, &mut described);
                     eprintln!("[agent] step {step}: {tool} was unsettled \u{2014} looked again");
                     desktop::settled_since(&obs, &seen)
+                }
+                None => obs,
+            };
+            // E.ARENA1-F30: the app said it was still loading -- look once more after a moment.
+            let loading_app = (sent && tool == desktop::DESCRIBE && desktop::still_loading(&obs))
+                .then(|| args.get("app").and_then(|a| a.as_str()).map(str::to_string))
+                .flatten()
+                .filter(|app| relooked.insert(app.clone()));
+            let obs = match loading_app {
+                Some(app) => {
+                    tokio::time::sleep(std::time::Duration::from_millis(desktop::LOADING_WAIT_MS)).await;
+                    let seen = self.run_agent_tool_as(desktop::DESCRIBE, &args, id).await;
+                    eprintln!("[agent] step {step}: {app} said it was loading \u{2014} looked again");
+                    desktop::loaded_since(&obs, &seen)
                 }
                 None => obs,
             };
