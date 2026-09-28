@@ -10935,3 +10935,29 @@ yantrik-os-f4's next shell build adds `shell.read_mind_view` (safe) and `shell.r
 - `reading_the_screen_changes_nothing` (loop): a describe, then `read_screen`, then a describe gives one describe sent. With a real act in between, the second is sent.
 - Mutant M1 (a read act makes reads stale) was watched to fail.
 - **Not yet on 520:** it waits for yantrik-os-f4's shell build with `read_screen` / `read_mind_view`, to ride that restart.
+
+## E.ARENA1-F40 — PREREG: the Mind's rules see the app the desktop sees
+
+yantrik-os #479 (merged as 1a3ea49) makes yos-mcp fold every app name before its own rules (`surface_name`): trim, lowercase, runs of spaces or underscores to `-`, and a leading `app-` dropped. `yos` resolves `shell`, `Shell`, `app_shell`, `App Shell` and `app-shell` all to the shell. The Mind's rules key on the **raw** name the model wrote:
+- F39's read acts, F7/F8/F11/F15's `shell` twin host, F36's per-app revisions, `described`;
+- the repeat identity (`tool|args`).
+
+So `{"app": "App Shell", "action": "read_screen"}` reached the shell and met none of them. A describe of `Shell`, then one of `shell`, also counted as two different reads.
+
+**F40:** before any rule and before dispatch, a desktop call's `app` is folded exactly as yos-mcp's `surface_name` folds it. The model's call reaches yos in the folded spelling, so the Mind and the bridge agree on one name.
+
+**Kill criteria:**
+- The fold matches `surface_name` on its documented examples.
+- `App Shell` + `read_screen` is a read act.
+- `Shell` then `shell` is one repeat identity.
+- A non-desktop tool's args are untouched.
+
+**E.ARENA1-F40 — RESULT: built, and every kill criterion held.** Full suite: 2151 passed, 0 failed.
+- `the_app_is_folded_as_the_desktop_folds_it` (unit):
+  - `shell`, `Shell`, ` app_shell`, `App Shell`, `app-shell` and `APP__SHELL` all fold to `shell`, and `Container Manager` to `container-manager`;
+  - `App Shell` + `read_screen` is a read act;
+  - `Shell` and `shell` are one repeat identity;
+  - a non-desktop tool's args are untouched.
+- `reading_the_screen_changes_nothing` (loop, extended): the model's "App Shell" reaches the desktop as `shell` and counts as a read.
+- Mutant M1 (no fold in the loop) was watched to fail.
+- It rides 520's restart after yantrik-os #479's nightly, together with F39.

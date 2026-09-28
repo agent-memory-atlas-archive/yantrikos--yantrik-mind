@@ -331,6 +331,40 @@ pub(crate) fn forget_desktop_reads(done: &mut std::collections::HashSet<String>)
     });
 }
 
+/// E.ARENA1-F40: an app name as yos-mcp's `surface_name` folds it (yantrik-os #479) -- trimmed,
+/// lower-cased, runs of spaces or underscores to `-`, a leading `app-` dropped. `yos` resolves every
+/// spelling to the same surface, so every rule here must compare this one.
+pub(crate) fn fold_app(name: &str) -> String {
+    let lower = name.trim().to_lowercase();
+    let mut out = String::with_capacity(lower.len());
+    let mut in_run = false;
+    for c in lower.chars() {
+        if c.is_whitespace() || c == '_' {
+            if !in_run {
+                out.push('-');
+            }
+            in_run = true;
+        } else {
+            out.push(c);
+            in_run = false;
+        }
+    }
+    out.strip_prefix("app-").map(str::to_string).unwrap_or(out)
+}
+
+/// E.ARENA1-F40: a desktop call with its `app` folded, so the Mind's rules and the desktop agree
+/// on the name. Other tools' arguments are returned as they were.
+pub(crate) fn fold_desktop_args(tool: &str, args: serde_json::Value) -> serde_json::Value {
+    if tool != ACT && tool != DESCRIBE {
+        return args;
+    }
+    let mut args = args;
+    if let Some(app) = args.get("app").and_then(|a| a.as_str()).map(fold_app) {
+        args["app"] = serde_json::Value::String(app);
+    }
+    args
+}
+
 /// E.ARENA1-F39: shell actions that READ the screen (OCR of windows with no element tree) but
 /// arrive as an act.
 const READ_ACTS: [&str; 2] = ["read_screen", "read_mind_view"];
@@ -1694,6 +1728,25 @@ mod tests {
         forget_desktop_reads(&mut done);
         assert!(!done.contains(&format!("{ACT}|{read}")), "the pre-act screen reading would be served again");
         assert!(done.contains(&format!("{ACT}|{change}")), "a change was forgotten -- it could be made twice");
+    }
+
+    /// E.ARENA1-F40: the fold is yos-mcp's `surface_name`, on its own documented spellings.
+    #[test]
+    fn the_app_is_folded_as_the_desktop_folds_it() {
+        for spelled in ["shell", "Shell", " app_shell", "App Shell", "app-shell", "APP__SHELL"] {
+            assert_eq!(fold_app(spelled), "shell", "{spelled:?}");
+        }
+        assert_eq!(fold_app("Container Manager"), "container-manager");
+        assert_eq!(fold_app("notes"), "notes");
+        let read = fold_desktop_args(ACT, serde_json::json!({"app": "App Shell", "action": "read_screen"}));
+        assert!(is_read_act(ACT, &read), "{read}");
+        assert_eq!(
+            format!("{DESCRIBE}|{}", fold_desktop_args(DESCRIBE, serde_json::json!({"app": "Shell"}))),
+            format!("{DESCRIBE}|{}", fold_desktop_args(DESCRIBE, serde_json::json!({"app": "shell"}))),
+            "two spellings of one read are one repeat identity"
+        );
+        let web = serde_json::json!({"app": "App Shell"});
+        assert_eq!(fold_desktop_args("web_search", web.clone()), web, "another tool's args were touched");
     }
 
     #[test]

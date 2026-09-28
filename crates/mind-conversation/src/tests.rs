@@ -17591,6 +17591,12 @@ mod desktop_consent_and_stall_wiring {
         let new = Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "editor", "action": "new", "args": {"text": "x"}}));
         let r = run_with("What does the screen say?", vec![d(), new, d()], vec![SHELL, SHELL, SHELL, SHELL], vec!["Done \u{2014} Text Editor \u{2014} Untitled"]).await;
         assert!(looks(&r) >= 2, "a real act did not make the description stale");
+        // E.ARENA1-F40: the model's own spelling of the shell reaches the desktop folded, and is
+        // still recognised as a read.
+        let spelled = Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "App Shell", "action": "read_screen"}));
+        let r = run_with("What does the screen say?", vec![d(), spelled, d()], vec![SHELL, SHELL, SHELL], vec!["Screen: 3 lines read"]).await;
+        assert!(r.reached.iter().any(|(t, a)| t.ends_with("os_act") && a["app"] == "shell"), "the call did not reach the desktop folded");
+        assert_eq!(looks(&r), 1, "`App Shell` was not taken for the shell's read");
     }
 
     /// E.CARDS1: every sent call opens a card and closes it with the loop's verdict; an unsent repeat

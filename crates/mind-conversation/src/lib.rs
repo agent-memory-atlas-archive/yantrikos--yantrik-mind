@@ -13622,6 +13622,8 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     continue;
                 }
             };
+            // E.ARENA1-F40: one spelling of the app for every rule below and for the desktop.
+            let args = desktop::fold_desktop_args(&tool, args);
             // Loop-guard: a weaker chat model often re-issues the SAME tool call instead of answering
             // (it spun on `home` 5× in testing). If the call is identical to the last one, we already
             // have that result in the work log — stop and compose the answer instead of refetching.
