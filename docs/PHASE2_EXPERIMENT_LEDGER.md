@@ -10094,3 +10094,10 @@ A minute later `describe weather` said "15°C in London". The service answers; t
   - A loop test: the quoted event's id reaches the model.
 - Two mutants, both watched to fail: nothing kept; loop not scoped.
 - Full suite with F31 and F32: 2106 passed, 0 failed.
+
+**Mind gate for yantrik-os 557e4ef, re-run with F31 and F32: PASS, 7/7.**
+- Mind 988e1d9 runs as `yantrik-mind` through `/run/yantrik-minds` with the agent token. CONTROL and PREFLIGHT were OK first.
+- T1–T7 all passed: 0 false claims, 0 voids, median 7.1 s (rows md5 188ebec2…).
+- **T4 passed with 39 events on the day:** F31 kept the quoted event's id through condensation.
+- **T6 and T7 passed through the editor:** F32 offered no `run_command`.
+- The seat was kept awake by yantrik-os-f4's `qm sendkey` for 30 minutes.
