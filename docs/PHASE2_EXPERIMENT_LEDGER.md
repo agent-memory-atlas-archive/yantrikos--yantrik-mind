@@ -10628,3 +10628,43 @@ Pranab's decision (via yantrik-os-f4): each person picks their own Mind's provid
 **Not exercised:**
 - The restart after saving (a supervised process exits 500 ms after replying), which needs a unit.
 - The route over the real socket, which the E.SOCK1 socket test covers for the MCP routes only.
+
+## E.EVID1 — PREREG: another mind saying a thing again is not more evidence
+
+yantrik-os #457, from the research sweep #459: admit claims by evidence, not repetition. The papers are unread by me, so this is our own hypothesis and our own test.
+
+**Measured on the real engine today.** N identical assertions from one source raise a belief's confidence exactly as much as N assertions from N distinct sources: 0.681, 0.821, 0.907, 0.978, 0.998 for N = 1, 2, 3, 5, 10. Repetition counts as corroboration.
+
+**Occurrence, checked before claiming:** staging's store (`mind_belief_evidence_version`, read-only) has 2,424 beliefs. One was asserted 3 times; none more. So in-process repetition is rare. The live exposure is new: under E.GRANT2 a mind holding `believe` can repeat a claim about the person until it reads as near-certain.
+
+**E.EVID1 (v1, MCP writers only):**
+- A repeated assertion from the same MCP mind (E.STAMP1 author, `via=mcp`) *in the same direction* as that mind's last contribution adds no weight and no stamp. The belief comes back unchanged.
+- An assertion in the opposite direction (the mind changed its mind) counts.
+- `mind_belief_authors` gains `last_polarity`. The column is added in place where the table already exists, as on staging.
+- **Out of scope for v1:** the Mind's own in-process assertions, which a store shows barely repeat, and consolidation authority (#457's second half).
+
+**Kill criteria:**
+- Ten identical `believe` calls from one MCP mind give the confidence of one.
+- A second mind's assertion still counts.
+- A contradiction from the first mind counts.
+- In-process repetition is unchanged (the N=10 curve above).
+- An existing table without the column is migrated.
+
+**E.EVID1 — RESULT: built, and every kill criterion held.** Full suite: 2138 passed, 0 failed.
+
+**`saying_it_again_is_not_more_evidence`** (through the MCP server, as agents):
+- ten identical `believe` calls from `hermes` give the confidence of the first;
+- a second mind (`pi`) raises it;
+- a contradiction from `hermes` lowers it;
+- the Mind's own in-process repetition still raises it.
+
+**`an_older_authors_table_gains_its_column`:** an E.STAMP1-era table is migrated in place, idempotently.
+
+**Mutants, each watched to fail:**
+- M1: repetition always counts.
+- M3: direction ignored.
+- M4: no migration.
+
+**Equivalent:** the `via == "mcp"` filter. No non-MCP writer passes an author today.
+
+**Not in v1:** in-process repetition, and #457's consolidation-authority half.

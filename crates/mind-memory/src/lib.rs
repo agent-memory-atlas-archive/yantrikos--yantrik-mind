@@ -3456,16 +3456,33 @@ fn ensure_belief_authors_table(db: &YantrikDB) {
          PRIMARY KEY (proposition, mind, via))",
         [],
     );
+    // E.EVID1: the direction of each author's last contribution. Added in place where the table
+    // came from E.STAMP1 without it; "duplicate column" on every later start is expected.
+    let _ = db.conn().execute(
+        "ALTER TABLE mind_belief_authors ADD COLUMN last_polarity INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
 }
 
-fn stamp_belief_author(db: &YantrikDB, proposition: &str, by: &WrittenBy) -> std::result::Result<(), String> {
+/// E.EVID1: has this author's last contribution to `proposition` already said the same thing?
+fn repeats_itself(db: &YantrikDB, proposition: &str, by: &WrittenBy, polarity: i64) -> bool {
+    db.conn()
+        .query_row(
+            "SELECT last_polarity FROM mind_belief_authors WHERE proposition = ?1 AND mind = ?2 AND via = ?3",
+            rusqlite::params![proposition, by.mind, by.via],
+            |r| r.get::<_, i64>(0),
+        )
+        .is_ok_and(|last| last == polarity && polarity != 0)
+}
+
+fn stamp_belief_author(db: &YantrikDB, proposition: &str, by: &WrittenBy, polarity: i64) -> std::result::Result<(), String> {
     let now = now_secs().floor() as i64;
     db.conn()
         .execute(
-            "INSERT INTO mind_belief_authors (proposition, mind, via, first_at, last_at, evidence) \
-             VALUES (?1, ?2, ?3, ?4, ?4, 1) ON CONFLICT(proposition, mind, via) \
-             DO UPDATE SET last_at = excluded.last_at, evidence = evidence + 1",
-            rusqlite::params![proposition, by.mind, by.via, now],
+            "INSERT INTO mind_belief_authors (proposition, mind, via, first_at, last_at, evidence, last_polarity) \
+             VALUES (?1, ?2, ?3, ?4, ?4, 1, ?5) ON CONFLICT(proposition, mind, via) \
+             DO UPDATE SET last_at = excluded.last_at, evidence = evidence + 1, last_polarity = excluded.last_polarity",
+            rusqlite::params![proposition, by.mind, by.via, now, polarity],
         )
         .map(|_| ())
         .map_err(|e| e.to_string())
@@ -4825,6 +4842,18 @@ impl MemoryHandle {
                         }
                         Cmd::AssertBelief { statement, signed_weight, source, provenance, evidence_version, scope, written_by, reply } => {
                             let before = evidence_version_of(&db, &statement);
+                            let polarity = signed_weight.signum() as i64;
+                            // E.EVID1: another mind saying the same thing again is not more evidence
+                            // -- the belief comes back unchanged. Changing its mind still counts.
+                            let repeated = written_by.as_ref().filter(|by| by.via == "mcp").and_then(|by| {
+                                let node = find_belief(&db, &normalize_belief_text(&statement))?;
+                                let canonical = node_prop(&node)?.to_string();
+                                repeats_itself(&db, &canonical, by, polarity).then(|| to_belief_dto(&node))
+                            });
+                            if let Some(unchanged) = repeated {
+                                let _ = reply.send(Ok(unchanged));
+                                continue;
+                            }
                             let result = match &scope {
                                 Some(scope) => assert_belief_scoped(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version, scope),
                                 None => assert_belief(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version),
@@ -4835,7 +4864,7 @@ impl MemoryHandle {
                             if let Ok(b) = &result {
                                 if get_belief_evidence_version(&db, &b.statement) != before {
                                     let by = written_by.unwrap_or_else(WrittenBy::this_mind);
-                                    if let Err(e) = stamp_belief_author(&db, &b.statement, &by) {
+                                    if let Err(e) = stamp_belief_author(&db, &b.statement, &by, polarity) {
                                         eprintln!("[memory] evidence on a belief left unattributed ({}/{}): {e}", by.mind, by.via);
                                     }
                                 }
@@ -9214,6 +9243,23 @@ MIIEvg==" });
             "formatting variant merges, contradiction (1.70 vs 1.96) stays separate: {:?}",
             rust.iter().map(|r| &r.item.text).collect::<Vec<_>>()
         );
+    }
+
+    /// E.EVID1: a table made by E.STAMP1, before `last_polarity`, is migrated in place.
+    #[test]
+    fn an_older_authors_table_gains_its_column() {
+        let db = YantrikDB::new(":memory:", 8).unwrap();
+        db.conn()
+            .execute(
+                "CREATE TABLE mind_belief_authors (proposition TEXT NOT NULL, mind TEXT NOT NULL, via TEXT NOT NULL,                  first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, evidence INTEGER NOT NULL, PRIMARY KEY (proposition, mind, via))",
+                [],
+            )
+            .unwrap();
+        ensure_belief_authors_table(&db);
+        ensure_belief_authors_table(&db); // a later start
+        let by = WrittenBy { mind: "hermes".into(), via: "mcp".into() };
+        stamp_belief_author(&db, "p", &by, 1).unwrap();
+        assert!(repeats_itself(&db, "p", &by, 1) && !repeats_itself(&db, "p", &by, -1));
     }
 
     /// E.GRANT1: another mind's footing, from the pinned `memory.validate` answer.

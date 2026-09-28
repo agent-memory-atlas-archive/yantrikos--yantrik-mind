@@ -690,6 +690,35 @@ mod tests {
         assert!(matches!(MemoryServer::new(mem).for_call(None).unwrap().caller, Caller::MachineToken), "stdio keeps its caller");
     }
 
+    fn agent_named(mem: &MemoryHandle, mind: &str) -> MemoryServer {
+        let answer = json!({"v": 1, "person_uid": 1000, "mind": mind, "attach": "a", "grants": ["believe", "recall_ordinary"]});
+        MemoryServer::for_agent(mem.clone(), AgentFooting::from_validation(&answer, 1000).unwrap().0)
+    }
+
+    /// E.EVID1: another mind saying the same thing again is not more evidence; a second mind is, a
+    /// change of mind is, and the Mind's own turns are unchanged.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn saying_it_again_is_not_more_evidence() {
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let (hermes, pi) = (agent_named(&mem, "hermes"), agent_named(&mem, "pi"));
+        let said = "The person's sister lives in Pune";
+        let conf = |v: Value| v["confidence"].as_f64().unwrap();
+        let once = conf(text(hermes.believe(input(json!({"statement": said}))).await.unwrap()));
+        let mut again = once;
+        for _ in 0..9 {
+            again = conf(text(hermes.believe(input(json!({"statement": said}))).await.unwrap()));
+        }
+        assert_eq!(again, once, "one mind repeating itself raised the belief");
+        let seconded = conf(text(pi.believe(input(json!({"statement": said}))).await.unwrap()));
+        assert!(seconded > once, "a second mind's evidence did not count: {seconded} vs {once}");
+        let retracted = conf(text(hermes.believe(input(json!({"statement": said, "direction": "contradicts"}))).await.unwrap()));
+        assert!(retracted < seconded, "a change of mind did not count: {retracted} vs {seconded}");
+        let tell = || BeliefAssertion { statement: "The Mind heard this twice".into(), polarity: 1.0, weight: 0.8, source_event: None, provenance: "told".into() };
+        let first = mem.remember_as_belief(tell()).await.unwrap().confidence;
+        let second = mem.remember_as_belief(tell()).await.unwrap().confidence;
+        assert!(second > first, "the Mind's own turns changed: {second} vs {first}");
+    }
+
     /// E.STAMP1: a stale versioned update is dropped, and adds no stamp.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
     async fn a_dropped_update_is_not_stamped() {
