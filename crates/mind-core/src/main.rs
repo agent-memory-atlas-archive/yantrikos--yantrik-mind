@@ -241,6 +241,20 @@ async fn main() -> anyhow::Result<()> {
             }
         }
     }
+    // E.SOCK1 (yantrik-os #447): the person's memory socket, for other minds with a credential.
+    #[cfg(unix)]
+    if let Ok(socket) = std::env::var("YM_MEMORY_SOCKET") {
+        let socket = std::path::PathBuf::from(socket.trim());
+        if !socket.as_os_str().is_empty() && db != ":memory:" {
+            let (served, token) = (mem.clone(), mind_memory_mcp::default_token_path(&db));
+            tokio::spawn(async move {
+                let never = std::future::pending::<()>();
+                if let Err(e) = mind_memory_mcp::serve_unix(served, &socket, &token, "yantrik-mind", never).await {
+                    eprintln!("[memory] NOT serving memory on the person's socket: {e:#}");
+                }
+            });
+        }
+    }
     let conv = mind_core::engine(&mem, pool);
 
     // What the desktop's mind picker will show under the name, set before any channel starts.

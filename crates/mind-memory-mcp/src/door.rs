@@ -136,6 +136,11 @@ impl Validator {
         Some(footing)
     }
 
+    /// The person this Mind belongs to.
+    pub fn person_uid(&self) -> u32 {
+        self.own_person_uid
+    }
+
     /// The desktop said this credential is gone (`memory.revoked`): stop trusting it now.
     pub fn revoke(&self, sha: &str) {
         self.forget(sha);

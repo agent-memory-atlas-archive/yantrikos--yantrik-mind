@@ -148,6 +148,23 @@ impl Auth {
         Self::token_only(token)
     }
 
+    /// E.SOCK1: the caller a request stands for. `peer` is the connection's peer uid when it came
+    /// over the person's unix socket (`Some(None)`: the kernel would not say), `None` over TCP. On
+    /// the socket only the person, presenting a credential the desktop validates, is served -- the
+    /// machine token is not accepted there.
+    fn caller_for(&self, presented: &str, peer: Option<Option<u32>>) -> Option<server::Caller> {
+        match peer {
+            None => self.caller(presented),
+            Some(uid) => {
+                let v = self.validator.as_ref()?;
+                if uid != Some(v.person_uid()) || !presented.starts_with("mem-") {
+                    return None;
+                }
+                v.footing(presented).map(server::Caller::Agent)
+            }
+        }
+    }
+
     /// The caller a bearer stands for, or None.
     fn caller(&self, presented: &str) -> Option<server::Caller> {
         if constant_time_eq(presented.as_bytes(), self.token.as_bytes()) {
@@ -161,6 +178,17 @@ impl Auth {
     }
 }
 
+/// E.SOCK1: the peer uid of a connection to the person's socket, as the kernel reports it.
+#[derive(Clone, Copy, Debug)]
+pub struct PeerUid(pub Option<u32>);
+
+#[cfg(unix)]
+impl axum::extract::connect_info::Connected<axum::serve::IncomingStream<'_, tokio::net::UnixListener>> for PeerUid {
+    fn connect_info(stream: axum::serve::IncomingStream<'_, tokio::net::UnixListener>) -> Self {
+        PeerUid(stream.io().peer_cred().ok().map(|c| c.uid()))
+    }
+}
+
 async fn require_token(State(auth): State<Auth>, mut req: Request, next: Next) -> Response {
     let presented = req
         .headers()
@@ -169,7 +197,11 @@ async fn require_token(State(auth): State<Auth>, mut req: Request, next: Next) -
         .and_then(|v| v.strip_prefix("Bearer "))
         .unwrap_or("")
         .to_string();
-    match auth.caller(&presented) {
+    let peer = req
+        .extensions()
+        .get::<axum::extract::ConnectInfo<PeerUid>>()
+        .map(|axum::extract::ConnectInfo(p)| p.0);
+    match auth.caller_for(&presented, peer) {
         Some(caller) => {
             // E.DOOR2: the caller rides with the request; rmcp hands its parts to the tool call.
             req.extensions_mut().insert(caller);
@@ -194,6 +226,40 @@ pub async fn serve_http(
         .await
         .with_context(|| format!("binding the memory server to {bind}"))?;
     tracing::info!(addr = %bind, token_file = %token_path.display(), served_by, "memory served over MCP at /mcp");
+    axum::serve(listener, app).with_graceful_shutdown(shutdown).await?;
+    Ok(())
+}
+
+/// E.SOCK1: serve the memory on the person's unix socket until `shutdown` resolves. Only the
+/// person's processes, presenting a credential the desktop validates, are served; without a
+/// person and a door in the environment there is no one it could serve, so it does not start.
+#[cfg(unix)]
+pub async fn serve_unix(
+    mem: mind_memory::MemoryHandle,
+    socket: &Path,
+    token_path: &Path,
+    served_by: &'static str,
+    shutdown: impl std::future::Future<Output = ()> + Send + 'static,
+) -> anyhow::Result<()> {
+    use std::os::unix::fs::{FileTypeExt, PermissionsExt};
+    let auth = Auth::from_env(load_or_create_token(token_path)?);
+    if auth.validator.is_none() {
+        return Err(anyhow!(
+            "not serving memory on {}: YANTRIK_PERSON_UID and YANTRIK_MIND_RUN must name the person and the door",
+            socket.display()
+        ));
+    }
+    match std::fs::symlink_metadata(socket) {
+        Ok(m) if m.file_type().is_socket() => std::fs::remove_file(socket)?,
+        Ok(_) => return Err(anyhow!("{} exists and is not a socket -- not touching it", socket.display())),
+        Err(_) => {}
+    }
+    let listener = tokio::net::UnixListener::bind(socket)
+        .with_context(|| format!("binding the memory socket {}", socket.display()))?;
+    // The directory (0750, group = the person) and each connection's peer uid are the gates.
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o666))?;
+    tracing::info!(socket = %socket.display(), served_by, "memory served over MCP on the person's socket at /mcp");
+    let app = app(mem, auth, served_by).into_make_service_with_connect_info::<PeerUid>();
     axum::serve(listener, app).with_graceful_shutdown(shutdown).await?;
     Ok(())
 }
@@ -273,6 +339,83 @@ mod tests {
             as_machine.contains(r#""result":{"content""#) && !as_machine.contains("recall_ordinary"),
             "the machine token's call changed: {as_machine}"
         );
+    }
+
+    fn vouching(person: u32) -> door::Validator {
+        door::Validator::with_asker(
+            Box::new(move |sha: &str| {
+                Ok((sha == door::credential_sha256("mem-good")).then(|| {
+                    serde_json::json!({"v": 1, "person_uid": person, "mind": "hermes", "attach": "hermes:c1@s1", "grants": [], "valid_for_ms": 2000})
+                }))
+            }),
+            person,
+        )
+    }
+
+    /// E.SOCK1, the rule: on the person's socket only the person, with a credential the desktop
+    /// vouches for, is served; the machine token is not accepted there; TCP is unchanged.
+    #[test]
+    fn on_the_socket_only_the_person_with_a_credential_is_served() {
+        let auth = Auth::with_validator("tok".into(), vouching(1000));
+        let who = |presented: &str, peer: Option<Option<u32>>| match auth.caller_for(presented, peer) {
+            Some(server::Caller::Agent(f)) => format!("agent:{}", f.mind()),
+            Some(server::Caller::MachineToken) => "machine".into(),
+            None => "refused".into(),
+        };
+        assert_eq!(who("mem-good", Some(Some(1000))), "agent:hermes");
+        assert_eq!(who("mem-good", Some(Some(1001))), "refused", "another account presented the person's credential");
+        assert_eq!(who("mem-good", Some(None)), "refused", "a peer the kernel would not name");
+        assert_eq!(who("tok", Some(Some(1000))), "refused", "the machine token on the socket");
+        assert_eq!(who("mem-unknown", Some(Some(1000))), "refused");
+        assert_eq!(who("tok", None), "machine", "TCP changed");
+        assert_eq!(who("mem-good", None), "agent:hermes", "TCP changed");
+        assert_eq!(Auth::token_only("tok".into()).caller_for("mem-good", Some(Some(1000))).map(|_| ()), None, "no validator, no one");
+    }
+
+    /// E.SOCK1 on a real socket (unix): a request from this process's own uid -- standing in for the
+    /// person -- with a vouched credential is served; without a bearer it is 401.
+    #[cfg(unix)]
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_socket_serves_the_person_and_no_one_else() {
+        use std::io::{Read, Write};
+        let me = unsafe { libc_getuid() };
+        let dir = std::env::temp_dir().join(format!("ym-sock-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let sock = dir.join("memory.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).unwrap();
+        let app = app(mind_memory::MemoryHandle::spawn(":memory:", 8).unwrap(), Auth::with_validator("tok".into(), vouching(me)), "test")
+            .into_make_service_with_connect_info::<PeerUid>();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        let ask = move |bearer: Option<&str>| {
+            let mut s = std::os::unix::net::UnixStream::connect(&sock).unwrap();
+            let auth = bearer.map(|b| format!("Authorization: Bearer {b}\r\n")).unwrap_or_default();
+            let body = r#"{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2024-11-05","capabilities":{},"clientInfo":{"name":"t","version":"0"}}}"#;
+            write!(
+                s,
+                "POST /mcp HTTP/1.1\r\nHost: x\r\n{auth}Content-Type: application/json\r\nAccept: application/json, text/event-stream\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            )
+            .unwrap();
+            s.set_read_timeout(Some(std::time::Duration::from_secs(10))).unwrap();
+            let mut out = String::new();
+            let _ = s.read_to_string(&mut out);
+            out.lines().next().unwrap_or_default().to_string()
+        };
+        let (with, without, token) =
+            tokio::task::spawn_blocking(move || (ask(Some("mem-good")), ask(None), ask(Some("tok")))).await.unwrap();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(with.contains(" 200 "), "the person with a credential was not served: {with}");
+        assert!(without.contains(" 401 "), "no bearer was served: {without}");
+        assert!(token.contains(" 401 "), "the machine token was served on the person's socket: {token}");
+    }
+
+    #[cfg(unix)]
+    unsafe fn libc_getuid() -> u32 {
+        extern "C" {
+            fn getuid() -> u32;
+        }
+        getuid()
     }
 
     /// E.DOOR2 through the real middleware: the machine token is the machine token; a `mem-`

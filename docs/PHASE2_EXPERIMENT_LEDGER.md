@@ -10528,3 +10528,48 @@ The caller rides in the HTTP request's extensions. rmcp carries the request `Par
 - M4: a credential with no validator gets the machine's view.
 
 **Off in every deployment today.** A `mem-` bearer is honoured only when the unit sets `YANTRIK_PERSON_UID` and `YANTRIK_MIND_RUN`. The live answer's bytes still wait for #449.
+
+## E.SOCK1 — PREREG: another mind reaches memory only through the person's socket, as the person
+
+yantrik-os #447 item (4). The transport is agreed on #447 (GPT-6 Sol and Jev): a unix socket at `/run/yantrik-mind/<uid>/memory.sock` (`RuntimeDirectory=yantrik-mind/%i`, 0750, group = the person), with HTTP path `/mcp`. TCP stays off.
+
+**E.SOCK1:**
+- `serve_unix` binds the socket, with `/mcp` and `/health` as on TCP.
+- Every connection's peer uid is read with SO_PEERCRED.
+- **A request on the socket is served only when the peer is the person (`YANTRIK_PERSON_UID`) *and* it presents a `mem-` credential the desktop validates.** The machine token isn't accepted on the socket.
+- The socket file is 0666. The directory (0750, group = the person) and the peer uid are the gates.
+- A stale socket at the path is replaced. Anything else at the path is an error, never deleted.
+- With no person or door in the environment, `serve_unix` refuses to start. A socket that can't validate anyone serves no one.
+- mind-core serves it when `YM_MEMORY_SOCKET` is set. TCP (`YM_MEMORY_SERVER`) is unchanged.
+
+**Kill criteria:**
+- **The rule, on every platform:**
+  - the person's peer with a valid credential → Agent;
+  - another uid with the same credential → refused;
+  - an unknown peer → refused;
+  - the person with the machine token → refused;
+  - TCP rules unchanged.
+- **On the socket (unix only, run on staging):** a real HTTP request over the socket with a valid credential from the right uid is served, and one with no bearer is 401.
+
+**E.SOCK1 — RESULT: built, and every kill criterion held.** Full suite locally 2133 passed, 0 failed. `mind-memory-mcp` passes 17/17 on Linux (staging), including the unix-only socket test, and mind-core builds there.
+
+**`on_the_socket_only_the_person_with_a_credential_is_served`** (every platform):
+- the person's uid with a vouched credential → Agent;
+- another uid, an unnamed peer, the machine token on the socket, or an unknown credential → refused;
+- TCP unchanged;
+- no validator → no one.
+
+**`the_socket_serves_the_person_and_no_one_else`** (unix, real socket, real HTTP from this process's uid):
+- a vouched credential → 200;
+- no bearer → 401;
+- the machine token → 401.
+
+**Mutants on Linux, each watched to fail:**
+- M1: any uid accepted.
+- M4: the middleware ignores the peer. This one is caught only by the real-socket test.
+
+**Equivalent:** dropping the `mem-` prefix check on the socket. The validator refuses the machine token anyway, so the check is belt and braces.
+
+**Harness note:** staging caught a unix-only compile error (a closure borrowing across `spawn_blocking`) that Windows could not see. Unix-only code is verified by pushing to a temporary branch and building on staging before it lands.
+
+**`serve_unix`'s own env handling** (it refuses to start without a person and a door; it replaces a stale socket, never another file) is not exercised by a test; the socket test composes the same app by hand.
