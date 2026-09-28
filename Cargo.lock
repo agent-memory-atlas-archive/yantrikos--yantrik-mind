@@ -2216,6 +2216,7 @@ name = "mind-core"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "axum",
  "chrono",
  "chrono-tz",
  "hex",
@@ -2232,9 +2233,11 @@ dependencies = [
  "mind-tools",
  "mind-types",
  "rand_core 0.6.4",
+ "serde",
  "serde_json",
  "sha3",
  "tokio",
+ "tower",
  "ureq 2.12.1",
  "yantrik-ml",
  "zeroize",

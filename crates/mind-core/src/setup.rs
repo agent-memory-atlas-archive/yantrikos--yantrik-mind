@@ -452,13 +452,24 @@ pub(crate) fn upsert_env_line(body: &str, key: &str, value: &str) -> String {
 }
 
 pub(crate) fn write_env_600(path: &str, body: &str) -> anyhow::Result<()> {
-    std::fs::write(path, body)?;
+    // E.PROV1: owner-only BEFORE a byte is written -- the file holds keys, and writing first then
+    // chmod-ing left a new file readable by others (umask 022) for a moment.
     #[cfg(unix)]
     {
-        use std::os::unix::fs::PermissionsExt;
-        std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        use std::io::Write as _;
+        use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
+        if std::path::Path::new(path).exists() {
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        let mut f = std::fs::OpenOptions::new().write(true).create(true).truncate(true).mode(0o600).open(path)?;
+        f.write_all(body.as_bytes())?;
+        return Ok(());
     }
-    Ok(())
+    #[cfg(not(unix))]
+    {
+        std::fs::write(path, body)?;
+        Ok(())
+    }
 }
 
 /// A compact terminal QR of the link, so a phone can scan it. Best-effort:

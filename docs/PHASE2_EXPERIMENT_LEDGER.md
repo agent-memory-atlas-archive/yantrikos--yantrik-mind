@@ -10573,3 +10573,58 @@ yantrik-os #447 item (4). The transport is agreed on #447 (GPT-6 Sol and Jev): a
 **Harness note:** staging caught a unix-only compile error (a closure borrowing across `spawn_blocking`) that Windows could not see. Unix-only code is verified by pushing to a temporary branch and building on staging before it lands.
 
 **`serve_unix`'s own env handling** (it refuses to start without a person and a door; it replaces a stale socket, never another file) is not exercised by a test; the socket test composes the same app by hand.
+
+## E.PROV1 — PREREG: the person sets their Mind's model, key included, without a transcript and without root
+
+Pranab's decision (via yantrik-os-f4): each person picks their own Mind's provider at first run, and entering it is their consent. Design agreed with f4 on #447 (their proposal): no root helper. The Mind accepts the setting itself, from the person's uid only, on its own socket, and writes its own 0600 settings file. The desktop's Settings page (**Settings → AI & Intelligence → Yantrik Mind → Model**) sends the key straight to the Mind and never stores it.
+
+**E.PROV1:** `POST /provider` exists **only on the person's memory socket** (E.SOCK1), never on TCP.
+- **Body:** `{provider, base_url?, model?, key?, private_context?}`.
+- **Who:** only when the connection's peer uid is `YANTRIK_PERSON_UID`; otherwise 403.
+- **Providers, v1:**
+  - `ollama`, local: `base_url` and `model`, optional `key` → `YM_LOCAL_OLLAMA_{URL,MODEL,KEY}`, as first-run saves it.
+  - `nanogpt`, `ollama-cloud`, `minimax`, the default chain's cloud links: `key` is required and goes into the catalog's key variable. The optional `model` goes into that provider's model variable. `base_url` is refused.
+- **Private context:** `private_context: true` adds the provider to `YM_PRIVATE_PROVIDERS`, so the person's private context may go to it. `false` (the default) removes it. That's explicit consent, per provider.
+- **Every value is one line.** A value with a control character is refused, so a key can't inject lines into the settings file, and a refused request leaves the file unchanged. Models are limited to `[A-Za-z0-9._:/@-]`.
+- **The key is never echoed,** in a reply, an error or a log.
+- **After saving:** a Mind supervised by systemd replies, then exits so its unit restarts it with the new model. First-run's words for a cloud key point to that Settings place when the Mind runs on Yantrik OS.
+
+**Kill criteria:**
+- The local and cloud settings land in the right variables, and other lines are kept.
+- Private context on adds the provider, and off removes it.
+- A key carrying `\nYM_X=1` is refused and the file is unchanged.
+- An unknown provider, a cloud provider without a key, and a cloud `base_url` are refused.
+- Another uid gets 403.
+- No reply contains the key.
+
+**E.PROV1 — RESULT: built, and every kill criterion held.** Full suite locally: 2136 passed, 0 failed. Tests are in `mind-core/src/provider_set.rs`.
+
+**The tests:**
+- **`the_setting_lands_in_the_right_lines_and_keeps_the_rest`:** a NanoGPT key and model land in `NANOGPT_KEY` and `YM_MODEL`. Consent turns `YM_PRIVATE_PROVIDERS=ollama-local` into `ollama-local,nanogpt`, and no-consent turns it back. A local Ollama is saved exactly as first-run saves it, and other lines are kept.
+- **`nothing_can_add_a_line_and_a_refusal_changes_nothing`:** each of these is refused, the file is byte-identical afterwards, and no error quotes the key:
+  - a key carrying `\nYM_X=1`;
+  - a model carrying a newline;
+  - a missing key;
+  - a cloud `base_url`;
+  - `openai`;
+  - a local Ollama without an address.
+- **`only_the_person_sets_it_and_the_key_is_never_echoed`:** another uid gets 403 and the file is untouched. The person gets 200, the reply doesn't carry the key, and `MINIMAX_API_KEY` is saved.
+- **`a_new_settings_file_is_owner_only`** (unix, run on staging): the file is 0600.
+
+**Also changed:**
+- **`write_env_600` sets owner-only before writing.** Before, a new file holding a key was world-readable under umask 022 for a moment. This affects first-run's save too.
+- **The socket is now 0660.** The unit makes the RuntimeDirectory setgid, group = the person (f4, #447).
+- **First-run's answer about a cloud key** names *Settings → AI & Intelligence → Yantrik Mind → Model* when the Mind runs on Yantrik OS.
+
+**Mutants, each watched to fail:**
+- M1: any uid.
+- M2: a newline allowed.
+- M3: consent ignored.
+- M4: a cloud `base_url` taken.
+- M5: the key echoed.
+
+**On Linux (staging):** 18/18 for provider_set and first_run, 17/17 for mind-memory-mcp, and the release build succeeds.
+
+**Not exercised:**
+- The restart after saving (a supervised process exits 500 ms after replying), which needs a unit.
+- The route over the real socket, which the E.SOCK1 socket test covers for the MCP routes only.

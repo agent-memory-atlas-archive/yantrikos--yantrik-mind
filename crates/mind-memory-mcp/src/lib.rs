@@ -239,6 +239,7 @@ pub async fn serve_unix(
     socket: &Path,
     token_path: &Path,
     served_by: &'static str,
+    extra: Router,
     shutdown: impl std::future::Future<Output = ()> + Send + 'static,
 ) -> anyhow::Result<()> {
     use std::os::unix::fs::{FileTypeExt, PermissionsExt};
@@ -256,10 +257,12 @@ pub async fn serve_unix(
     }
     let listener = tokio::net::UnixListener::bind(socket)
         .with_context(|| format!("binding the memory socket {}", socket.display()))?;
-    // The directory (0750, group = the person) and each connection's peer uid are the gates.
-    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o666))?;
+    // The directory (2750, group = the person, set by the unit) and each connection's peer uid are
+    // the gates; the socket inherits the person's group from the setgid directory.
+    std::fs::set_permissions(socket, std::fs::Permissions::from_mode(0o660))?;
     tracing::info!(socket = %socket.display(), served_by, "memory served over MCP on the person's socket at /mcp");
-    let app = app(mem, auth, served_by).into_make_service_with_connect_info::<PeerUid>();
+    // `extra`: routes that exist only on the person's socket (E.PROV1's /provider).
+    let app = app(mem, auth, served_by).merge(extra).into_make_service_with_connect_info::<PeerUid>();
     axum::serve(listener, app).with_graceful_shutdown(shutdown).await?;
     Ok(())
 }

@@ -268,6 +268,18 @@ fn is_greeting(lower: &str) -> bool {
 }
 
 fn cloud_answer(env_path: &Path) -> String {
+    // E.PROV1: on Yantrik OS the person sets a cloud model in Settings, which sends the key
+    // straight to this Mind -- the settings file is in a folder the person cannot open.
+    if std::env::var_os("YANTRIK_MIND_RUN").is_some_and(|v| !v.is_empty()) {
+        return format!(
+            "A cloud model needs an API key, and I won't ask for one here: this chat is shown on the \
+             desktop and can be read back by other agents on this machine, and a key must not pass \
+             through it.\n\nOpen {} and choose a provider there -- the key goes straight to me \
+             and nowhere else. You can also say there whether I may send your private context to it. \
+             Or send me an Ollama address to use a model on your own hardware.",
+            crate::provider_set::SETTINGS_PLACE
+        );
+    }
     format!(
         "A cloud model needs an API key, and I won't ask for one here: this chat is shown on the \
          desktop and can be read back by other agents on this machine, and a key must not pass \

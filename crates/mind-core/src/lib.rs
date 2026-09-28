@@ -17,6 +17,7 @@ pub mod first_run;
 pub mod harness;
 mod loops;
 pub mod setup;
+pub mod provider_set;
 pub mod anthropic_gateway;
 pub mod telegram;
 pub mod wallet_setup;

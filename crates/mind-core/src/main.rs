@@ -249,7 +249,10 @@ async fn main() -> anyhow::Result<()> {
             let (served, token) = (mem.clone(), mind_memory_mcp::default_token_path(&db));
             tokio::spawn(async move {
                 let never = std::future::pending::<()>();
-                if let Err(e) = mind_memory_mcp::serve_unix(served, &socket, &token, "yantrik-mind", never).await {
+                // E.PROV1: the person sets this Mind's model here, from Settings.
+                let person = std::env::var("YANTRIK_PERSON_UID").ok().and_then(|v| v.trim().parse::<u32>().ok()).unwrap_or(u32::MAX);
+                let extra = mind_core::provider_set::router(person, mind_core::first_run::env_path(), mind_core::first_run::supervised());
+                if let Err(e) = mind_memory_mcp::serve_unix(served, &socket, &token, "yantrik-mind", extra, never).await {
                     eprintln!("[memory] NOT serving memory on the person's socket: {e:#}");
                 }
             });
