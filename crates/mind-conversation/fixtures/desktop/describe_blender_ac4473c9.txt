@@ -1,0 +1,69 @@
+Blender — unsaved scene, 3 objects, EEVEE 1920x1080
+revision: 84cc4cf00dd1772c
+{
+  "scene": "Scene",
+  "file": null,
+  "unsaved": false,
+  "objects": [{"name": "Cube", "type": "MESH", "location": [0.0, 0.0, 0.0], "dimensions": [2.0, 2.0, 2.0]}, {"name": "Light", "type": "LIGHT", "location": [4.076, 1.005, 5.904], "dimensions": [0.0, 0.0, 0.0]}, {"name": "Camera", "type": "CAMERA", "location": [7.359, -6.926, 4.958], "dimensions": [0.0, 0.0, 0.0]}],
+  "objects_total": 3,
+  "camera": {"name": "Camera", "location": [7.359, -6.926, 4.958]},
+  "render": {"engine": "eevee", "resolution": "1920x1080", "samples": 64, "output": "/tmp/"},
+  "last_render": null,
+  "notice": "",
+  "background": false
+}
+  act: new_scene()  [standard, settles on return]
+       Throw the current scene away and start an empty one. Anything unsaved in it is lost, and in a background Blender there is no undo to argue with.
+  act: add_primitive(kind, name?, location?, scale?)  [standard, settles on return]
+       Add a mesh primitive to the scene, where you say, at the size you say.
+         kind: string — cube, sphere, cylinder, plane or monkey
+         name?: string — what to call it; Blender names it otherwise
+         location?: string — centre point, three metres like `1,2,3`
+         scale?: string — three factors like `1,1,1`, or one for all axes
+  act: delete_object(name)  [standard, settles on return]
+       Delete an object from the scene. Blender's own undo can bring it back in a window; past that undo it is not recoverable, and a background Blender has no undo at all.
+         name: string — the object's exact name, as describe lists it
+  act: transform(name, location?, rotation?, scale?)  [standard, settles on return]
+       Move, rotate or scale an object. Give at least one of the three; rotation is in degrees.
+         name: string — the object's exact name, as describe lists it
+         location?: string — three metres like `1,2,3`
+         rotation?: string — three degrees like `0,0,90`
+         scale?: string — three factors like `2,2,2`
+  act: set_material(name, color?, metallic?, roughness?)  [standard, settles on return]
+       Give an object a material: a base colour, how metallic it is, how rough it is. Give at least one of the three. Cycles and EEVEE shade it; Workbench draws the colour flat, and the answer says so.
+         name: string — the object's exact name, as describe lists it
+         color?: string — `#rrggbb`, or `r,g,b` with each from 0 to 1
+         metallic?: number — 0 to 1
+         roughness?: number — 0 to 1
+  act: set_camera(location?, look_at?)  [standard, settles on return]
+       Place the scene's camera and point it at something. A scene without a camera gets one.
+         location?: string — three metres like `4,-4,3`
+         look_at?: string — the point to aim at, like `0,0,0`
+  act: set_light(kind, energy?, location?)  [standard, settles on return]
+       Add a light of a kind, or change the scene's existing one of that kind. Cycles and EEVEE light the scene with it; Workbench lights the scene itself, and the answer says so.
+         kind: string — point, sun, spot or area
+         energy?: number — brightness in the engine's own unit; must not be negative
+         location?: string — three metres like `2,2,4`
+  act: import_model(path)  [standard, settles on return]
+       Import a model file into the scene. It takes .obj, .stl and .glb.
+         path: string — the file to import
+  act: set_render(engine?, resolution?, samples?)  [standard, settles on return]
+       Change how the scene will be rendered: the engine, the size of the image, the samples per pixel. Give at least one of the three.
+         engine?: string — cycles, eevee or workbench
+         resolution?: string — like `1920x1080`
+         samples?: integer — per pixel; Cycles and EEVEE have samples, Workbench does not
+  act: render(output)  [sensitive, settles on return]
+       Render the scene to a PNG and report the path, the seconds it took and the size of the file. With Cycles on a big scene this can take minutes.
+         output: string — where to write the PNG
+  act: save(path)  [sensitive, settles on return]
+       Save this Blender file to a path. It overwrites whatever is already there.
+         path: string — where to write the .blend
+  act: open(path)  [sensitive, settles on return]
+       Open a .blend file in place of the current scene. Refused while the current scene has unsaved changes — save it or start a new one first.
+         path: string — the .blend file to open
+  act: run_python(code)  [dangerous, settles on return]
+       Run arbitrary Python inside this Blender, with `bpy` in scope. It can do anything a person at the keyboard can do, including deleting files this user can reach. Anything it does before an error is still done — it is not recoverable.
+         code: string — the Python to run
+  act: screenshot(output)  [standard, settles on return]
+       Save what the 3D viewport shows as a PNG. Needs a window with a viewport open; a background Blender draws nothing, and `render` is the honest answer there.
+         output: string — where to write the PNG

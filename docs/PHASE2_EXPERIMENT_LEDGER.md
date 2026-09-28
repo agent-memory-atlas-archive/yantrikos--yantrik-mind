@@ -10697,3 +10697,38 @@ yantrik-os #464 (live on 520, yos sha256 54947317…12df) fixes the desktop half
 - M2 (no once-per-app limit) **first survived**. The test's two describes were identical and in a row, so the second was answered from the work log and never reached the rule. The test was fixed with an act between them, as F30's test does, plus an assertion that the second describe was sent. M2 then failed as it should.
 
 **What f4's re-run showed (turn 428, fresh yos-mcp with #464's first commit):** F23b's settle-look (which *describes* the opened app) still reported Blender "not running" about 1.5 s after `open_app`. Most likely the shell didn't list Blender's window yet, so yos had nothing to wait for. That's under investigation, with timings asked of f4. F34 covers only the case where a window is listed and the app is past 15 s.
+
+## E.ARENA1-F35 — PREREG: refused above the machine's limit is not "impossible" when the app offers a way within it
+
+**Seen live on 520** (turn 433, sent by yantrik-os-f4): "build and render a Blender scene".
+- The Mind wrote `scene.py` and asked for `blender.run_python` (graded dangerous). yos-mcp refused it: above this machine's `sensitive` ceiling, and no one can approve it. That was correct.
+- The Mind then told the person "the only way to build the scene is run_python … no answer you could give would unlock it". **That is false.** Blender itself lists `add_primitive`, `set_material`, `set_light`, `set_camera` and `set_render`, all graded standard, and `render` (sensitive).
+- F7/F8's twin logic covers "sensitive → would ask first → a shell `<app>_*` twin". Nothing covered "refused for its grade".
+
+**F35:** after a desktop act refused for its grade, the model is shown, once per app per turn, **that app's own listed actions within the machine's ceiling**, with signatures and grades (sensitive marked as asking the person first). It's told to build the result from them if they can, and to say it can't be done only if none of them can. Both refusal forms are read, with the grade and ceiling taken from the words:
+- yos-mcp's guard: "…`<app>.<action>` is graded X, and this machine does not allow callers like this past Y…";
+- the app's own: "CEILING: `<app>.<action>` is graded `X`, above this machine's `Y` ceiling".
+
+**Kill criteria**, on the real bytes (fixtures `act_blender_run_python_refused_ac4473c9.txt`, `describe_blender_ac4473c9.txt`):
+- The refusal is read as (blender, run_python, dangerous, sensitive).
+- The note lists `add_primitive`, `set_material`, `set_light`, `set_camera` and `set_render`, and `render` as asking first, and never `run_python`.
+- The CEILING form reads the same.
+- A refusal for another reason gets no note.
+- Through the loop, the note reaches the model once per app per turn.
+
+**E.ARENA1-F35 — RESULT: built on the real bytes, and every kill criterion held.** Full suite: 2141 passed, 0 failed.
+
+**`a_refusal_above_the_limit_shows_what_the_app_offers_within_it`:**
+- The guard's refusal reads as (blender, run_python, dangerous, sensitive), and the app's CEILING form reads the same.
+- The note names add_primitive, set_material, set_light, set_camera and set_render, marks render "asks the person first", and never offers run_python.
+- At a `standard` limit (the real listing, the CEILING form), render and open are left out as well.
+- Another refusal gets no reading.
+
+**`a_refused_action_points_at_what_the_app_offers_within_the_limit`** (loop): both run_python calls are sent, and the note reaches the model once.
+
+**Mutants:**
+- M1 (never read) and M4 (no once-per-app limit) were each watched to fail.
+- **M3 (any grade) first survived.** In the real listing, run_python is the only action above `sensitive`, and the name filter already drops it. The `standard` case was added, and M3 then failed.
+- The name filter itself is equivalent: a grade refusal means the action is above the limit.
+
+**Also seen live, before F35 existed (take 6, 14:50, f4):** worded "build it step by step in Blender", the Mind went new_scene → add_primitive ×2 → set_light → set_material → set_camera → set_render → render, and produced a real PNG. The typed route works; F35 is what points a model at it after a refusal.

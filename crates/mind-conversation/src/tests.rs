@@ -17568,6 +17568,34 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
     }
 
+    /// E.ARENA1-F35, 520 turn 433, on the real bytes: after run_python is refused above the
+    /// machine's limit, the model is shown Blender's own actions within it -- once per app per turn,
+    /// even when a second refusal is sent.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_refused_action_points_at_what_the_app_offers_within_the_limit() {
+        const DESCRIBE: &str = include_str!("../fixtures/desktop/describe_blender_ac4473c9.txt");
+        const REFUSED: &str = include_str!("../fixtures/desktop/act_blender_run_python_refused_ac4473c9.txt");
+        let run = |code: &str| Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "blender", "action": "run_python", "args": {"code": code}}));
+        let r = run_with(
+            "Build and render a Blender scene",
+            vec![
+                Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "blender"})),
+                run("exec(open('/home/yantrik/scene.py').read())"),
+                Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "blender", "action": "set_render", "args": {"engine": "eevee"}})),
+                run("import bpy"),
+            ],
+            vec![DESCRIBE, DESCRIBE, DESCRIBE, DESCRIBE, DESCRIBE, DESCRIBE],
+            vec![REFUSED, "Done \u{2014} Blender \u{2014} render settings set", REFUSED],
+        )
+        .await;
+        let refusals = r.reached.iter().filter(|(t, a)| t.ends_with("os_act") && a["action"] == "run_python").count();
+        assert_eq!(refusals, 2, "both run_python calls must be sent for the once-only check to mean anything");
+        let last = r.prompts.iter().rev().find(|p| p.contains("Work log")).cloned().unwrap_or_default();
+        assert!(last.contains("blender itself offers these actions within the limit"), "the model was never shown the way within the limit");
+        assert!(last.contains("add_primitive(") && last.contains("set_material("), "the actions were not named");
+        assert_eq!(last.matches("blender itself offers these actions within the limit").count(), 1, "shown twice in one turn");
+    }
+
     /// E.ARENA1-F34, 520 turn 424 and yantrik-os #464, on the real bytes: an app that is still
     /// starting is described once more and the model sees that look; not twice; and an ordinary
     /// failure is not re-looked.

@@ -12863,6 +12863,8 @@ Open reminders you're carrying for them:",
         let mut goal_nudged = false;
         // E.ARENA1-F30: apps already looked at again this turn because they said they were loading.
         let mut relooked: std::collections::HashSet<String> = std::collections::HashSet::new();
+        // E.ARENA1-F35: apps whose within-the-limit actions the model has been shown this turn.
+        let mut ceiling_noted: std::collections::HashSet<String> = std::collections::HashSet::new();
         // E.ARENA1-F26: each desktop action that RAN this turn, with its result's first line.
         let mut made: Vec<(serde_json::Value, String)> = Vec::new();
         // E.LOOP1 MEASUREMENT, not a bound. Two diagnoses of the 29-step runaway were wrong, and
@@ -13745,6 +13747,20 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             if sent {
                 desktop::update_unsaved(&tool, &args, &obs, &mut unsaved_doc);
             }
+            // E.ARENA1-F35: refused above the machine's limit -- show what the app offers within it.
+            let ceiling_note = (sent && tool == desktop::ACT)
+                .then(|| desktop::ceiling_refusal(&obs))
+                .flatten()
+                .filter(|r| !ceiling_noted.contains(&r.app))
+                .and_then(|r| desktop::within_ceiling(&r, &described).map(|note| (r.app, note)));
+            let obs = match ceiling_note {
+                Some((app, note)) => {
+                    ceiling_noted.insert(app.clone());
+                    eprintln!("[agent] step {step}: {app} refused above the limit \u{2014} showing what it offers within it");
+                    format!("{obs}\n{note}")
+                }
+                None => obs,
+            };
             let latency_ms = tool_started.elapsed().as_millis().min(u128::from(u64::MAX)) as u64;
             eprintln!(
                 "[agent] step {step}: {tool} -> {}",

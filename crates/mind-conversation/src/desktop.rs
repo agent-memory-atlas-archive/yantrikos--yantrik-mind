@@ -499,6 +499,86 @@ pub(crate) fn lower_grade_twin(
     })
 }
 
+/// E.ARENA1-F35: an action the desktop refused because it is graded above this machine's ceiling.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) struct CeilingRefusal {
+    pub(crate) app: String,
+    pub(crate) action: String,
+    pub(crate) grade: String,
+    pub(crate) ceiling: String,
+}
+
+/// E.ARENA1-F35: read a ceiling refusal, in either of the desktop's two forms (real bytes, 520):
+/// yos-mcp's guard -- "refused: blender.run_python is graded dangerous, and this machine does not
+/// allow callers like this past sensitive (…" -- or the app's own -- "CEILING: blender.run_python is
+/// graded `dangerous`, above this machine's `sensitive` ceiling".
+pub(crate) fn ceiling_refusal(obs: &str) -> Option<CeilingRefusal> {
+    let word = |s: &str| s.trim_matches(|c: char| c == '`' || c.is_whitespace()).to_string();
+    let target = |s: &str| {
+        let t = word(s);
+        let (app, action) = t.split_once('.')?;
+        (!app.is_empty() && !action.is_empty()).then(|| (app.to_string(), action.to_string()))
+    };
+    if let Some(rest) = obs.split("refused: ").nth(1) {
+        if let Some((what, tail)) = rest.split_once(" is graded ") {
+            if let Some((grade, after)) = tail.split_once(", and this machine does not allow callers like this past ") {
+                let ceiling = after.split([' ', '(', '.', ',']).next().unwrap_or("");
+                let (app, action) = target(what)?;
+                return Some(CeilingRefusal { app, action, grade: word(grade), ceiling: word(ceiling) });
+            }
+        }
+    }
+    let rest = obs.split("CEILING: ").nth(1)?;
+    let (what, tail) = rest.split_once(" is graded ")?;
+    let (grade, after) = tail.split_once(", above this machine's ")?;
+    let ceiling = after.split(" ceiling").next()?;
+    let (app, action) = target(what)?;
+    Some(CeilingRefusal { app, action, grade: word(grade), ceiling: word(ceiling) })
+}
+
+/// The desktop's grade ladder, lowest first.
+fn grade_rank(grade: &str) -> Option<usize> {
+    ["safe", "standard", "sensitive", "dangerous"].iter().position(|g| *g == grade)
+}
+
+/// E.ARENA1-F35: the refused app's own actions within the machine's ceiling, as a note for the
+/// model -- 520 turn 433: run_python was refused, and the Mind told the person the scene could not
+/// be built while Blender listed add_primitive, set_material, set_light, set_camera and set_render
+/// at standard. None when the app lists nothing within the ceiling (or was not read this turn).
+pub(crate) fn within_ceiling(
+    r: &CeilingRefusal,
+    described: &std::collections::HashMap<String, ActionList>,
+) -> Option<String> {
+    let limit = grade_rank(&r.ceiling)?;
+    let within: Vec<String> = described
+        .get(&r.app)?
+        .iter()
+        .filter(|l| l.name != r.action)
+        .filter(|l| grade_rank(&l.grade).is_some_and(|g| g <= limit))
+        .map(|l| {
+            if asks_first(&l.grade) {
+                format!("{} [{}, asks the person first]", l.sig, l.grade)
+            } else {
+                format!("{} [{}]", l.sig, l.grade)
+            }
+        })
+        .collect();
+    if within.is_empty() {
+        return None;
+    }
+    Some(format!(
+        "({app}.{action} is graded {grade}, above this machine's {ceiling} limit, so it cannot run and \
+         no one here can approve it. {app} itself offers these actions within the limit: {list}. If \
+         they can do what was asked, do it with them, step by step. Say it cannot be done only if none \
+         of them can.)",
+        app = r.app,
+        action = r.action,
+        grade = r.grade,
+        ceiling = r.ceiling,
+        list = within.join("; ")
+    ))
+}
+
 /// E.ARENA1-F11: the app the desktop said does not exist, read off its own refusal: "…how the OS
 /// grades it could not be read: yos: no socket for 'files'".
 pub(crate) fn missing_app(obs: &str) -> Option<String> {
@@ -1510,6 +1590,35 @@ mod tests {
 
     /// No hint where there is no lower door, where the action is already standard, or where the
     /// app was never described this turn.
+    /// E.ARENA1-F35 on the real bytes (520, ac4473c9): the refusal names the action, its grade and
+    /// the limit; the note lists Blender's own actions within the limit, never the refused one.
+    #[test]
+    fn a_refusal_above_the_limit_shows_what_the_app_offers_within_it() {
+        let f = |n: &str| std::fs::read_to_string(format!("{}/fixtures/desktop/{n}", env!("CARGO_MANIFEST_DIR"))).unwrap();
+        let refused = f("act_blender_run_python_refused_ac4473c9.txt");
+        let r = ceiling_refusal(&refused).expect("the guard's refusal was not read");
+        assert_eq!((r.app.as_str(), r.action.as_str(), r.grade.as_str(), r.ceiling.as_str()), ("blender", "run_python", "dangerous", "sensitive"));
+        let own = ceiling_refusal("CEILING: blender.run_python is graded `dangerous`, above this machine's `sensitive` ceiling (`tool_permission` in ~/.config/yantrik/settings.yaml), so it was not run.").unwrap();
+        assert_eq!(own, r, "the app's own CEILING form reads the same");
+        let mut d = std::collections::HashMap::new();
+        record_described(&serde_json::json!({"app": "blender"}), &f("describe_blender_ac4473c9.txt"), &mut d);
+        let note = within_ceiling(&r, &d).expect("Blender lists actions within the limit");
+        for a in ["add_primitive(", "set_material(", "set_light(", "set_camera(", "set_render("] {
+            assert!(note.contains(a), "{a} missing: {note}");
+        }
+        assert!(note.contains("render(") && note.contains("[sensitive, asks the person first]"), "{note}");
+        assert!(!note.contains("run_python("), "the refused action was offered back: {note}");
+        // A machine held at `standard`: the sensitive actions are above the limit too, not only the
+        // refused one (the real listing, the app's own CEILING form).
+        let low = ceiling_refusal("CEILING: blender.save is graded `sensitive`, above this machine's `standard` ceiling (`tool_permission` in ~/.config/yantrik/settings.yaml), so it was not run.").unwrap();
+        let note = within_ceiling(&low, &d).expect("Blender lists standard actions");
+        assert!(note.contains("add_primitive("), "{note}");
+        for above in ["  render(", "; render(", "open(", "run_python("] {
+            assert!(!note.contains(above), "{above} is above a standard limit: {note}");
+        }
+        assert_eq!(ceiling_refusal("REFUSED \u{2014} nothing was run. refused: shell.files_create_folder was not run, because how the OS grades it could not be read"), None, "another refusal");
+    }
+
     #[test]
     fn no_hint_without_a_real_lower_grade_twin() {
         let d = described_from_fixtures();
