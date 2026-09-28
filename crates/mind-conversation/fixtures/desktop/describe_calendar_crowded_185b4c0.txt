@@ -1,0 +1,64 @@
+Calendar — September 2026, 27 things on day 30
+revision: 2fb5e7819dd711a3
+{
+  "days_with_events": [{"day": 22, "events": 1}, {"day": 23, "events": 2}, {"day": 25, "events": 3}, {"day": 30, "events": 27}],
+  "events_on_selected_day": [{"all_day": false, "date": "2026-09-30", "id": "01a0e101-de48-79e8-a75c-7d9d718ad002", "may_delete_unasked": false, "time": "15:00 – 15:30", "title": "Arena pfmbx"}, {"all_day": false, "date": "2026-09-30", "id": "01a0cf0e-7b26-7b58-90cc-af08ab124afe", "may_delete_unasked": false, "time": "15:00 – 15:30", "title": "Arena pfcix"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e20e-f938-794e-999f-98cb7d34652f", "may_delete_unasked": false, "time": "15:00 – 15:30", "title": "Arena pfdky"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e18c-2007-74ae-863d-f26ff2b328a1", "may_delete_unasked": false, "time": "15:00 – 15:30", "title": "Arena pfktv"}, {"all_day": false, "date": "2026-09-30", "id": "01a0cd3e-b346-72c4-9187-b395febc3902", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena herr8s"}, {"all_day": false, "date": "2026-09-30", "id": "01a0cf0f-76b0-78f5-a1a4-75e4fe6d659a", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena minq5b"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e225-2ca5-705f-87ca-326ae6576b11", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena mine9f"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e21c-9c89-7ae8-86af-acc03c40c3e0", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena herayp"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e223-444c-729f-b525-247e9c7e2245", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena deeayp"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e22e-00c5-74c2-bc9c-248bae34f254", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena deee9f"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e218-924f-767a-85d1-7868d52a8c4e", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena dee9kb"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e101-a935-709d-b567-b9e70f0b2e00", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pcnjf"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e225-30d9-7b06-9e6d-bf16069a800a", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena mine9f"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e18b-f2ba-7a38-818c-e00b27157c03", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pclpk"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e214-3edb-7393-af6a-fdd2d1e545a3", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pi9kb"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e21e-daae-7a8a-ae04-85c54e445deb", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena piayp"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e227-79d4-7e69-8d70-e380cee7e2df", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena here9f"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e20e-ca11-7f61-83ca-ecf3df1a3437", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pcbiv"}, {"all_day": false, "date": "2026-09-30", "id": "01a0cf0e-44b3-7a03-940f-456cb693f516", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pcnkf"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e20f-b202-7e23-b066-9fee31a157af", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena min9kb"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e211-c311-7ad7-8c82-5cc43ca4e427", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena her9kb"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e216-4ceb-73d6-beee-23146378a360", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena ope9kb"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e229-aa71-79e4-abcc-8b63407d1316", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena pie9f"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e102-cf87-785c-ae38-f26417379cdf", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena minpk2"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e21a-6d39-702b-8246-3bced1222ec4", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena minayp"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e220-de87-77c6-a36e-8849c05335bd", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena opeayp"}, {"all_day": false, "date": "2026-09-30", "id": "01a0e22b-9d34-7c08-9d08-1cd04983a220", "may_delete_unasked": false, "time": "16:30 – 17:00", "title": "Arena opee9f"}],
+  "events_this_month": 33,
+  "month": "September 2026",
+  "month_number": 9,
+  "naming": {"01a0c718-38b8-7537-a897-78731dc4ac1b": "Perception API review, Fri 25 Sep 10:00", "01a0c718-3931-7342-b9c7-8de36140ddb0": "Dentist, Fri 25 Sep 13:00", "01a0c71a-593d-781b-ba5e-0eb124756372": "Lunch with Sam, Fri 25 Sep 13:00", "01a0c7db-635f-77e7-9dd7-b0608d477476": "Reminder check with Priya, Tue 22 Sep 01:56", "01a0cb98-5de9-7f23-9610-8e3be8de7757": "Arcade: why the Browser draws nothing, Wed 23 Sep 10:00", "01a0cbb5-1855-7418-9854-3fe857b77eae": "Why the desktop Browser has no WebGL (Arcade play draws nothing), Wed 23 Sep 09:30", "01a0cd3e-b346-72c4-9187-b395febc3902": "Arena herr8s, Wed 30 Sep 16:30", "01a0cf0e-44b3-7a03-940f-456cb693f516": "Arena pcnkf, Wed 30 Sep 16:30", "01a0cf0e-7b26-7b58-90cc-af08ab124afe": "Arena pfcix, Wed 30 Sep 15:00", "01a0cf0f-76b0-78f5-a1a4-75e4fe6d659a": "Arena minq5b, Wed 30 Sep 16:30", "01a0e101-a935-709d-b567-b9e70f0b2e00": "Arena pcnjf, Wed 30 Sep 16:30", "01a0e101-de48-79e8-a75c-7d9d718ad002": "Arena pfmbx, Wed 30 Sep 15:00", "01a0e102-cf87-785c-ae38-f26417379cdf": "Arena minpk2, Wed 30 Sep 16:30", "01a0e18b-f2ba-7a38-818c-e00b27157c03": "Arena pclpk, Wed 30 Sep 16:30", "01a0e18c-2007-74ae-863d-f26ff2b328a1": "Arena pfktv, Wed 30 Sep 15:00", "01a0e20e-ca11-7f61-83ca-ecf3df1a3437": "Arena pcbiv, Wed 30 Sep 16:30", "01a0e20e-f938-794e-999f-98cb7d34652f": "Arena pfdky, Wed 30 Sep 15:00", "01a0e20f-b202-7e23-b066-9fee31a157af": "Arena min9kb, Wed 30 Sep 16:30", "01a0e211-c311-7ad7-8c82-5cc43ca4e427": "Arena her9kb, Wed 30 Sep 16:30", "01a0e214-3edb-7393-af6a-fdd2d1e545a3": "Arena pi9kb, Wed 30 Sep 16:30", "01a0e216-4ceb-73d6-beee-23146378a360": "Arena ope9kb, Wed 30 Sep 16:30", "01a0e218-924f-767a-85d1-7868d52a8c4e": "Arena dee9kb, Wed 30 Sep 16:30", "01a0e21a-6d39-702b-8246-3bced1222ec4": "Arena minayp, Wed 30 Sep 16:30", "01a0e21c-9c89-7ae8-86af-acc03c40c3e0": "Arena herayp, Wed 30 Sep 16:30", "01a0e21e-daae-7a8a-ae04-85c54e445deb": "Arena piayp, Wed 30 Sep 16:30", "01a0e220-de87-77c6-a36e-8849c05335bd": "Arena opeayp, Wed 30 Sep 16:30", "01a0e223-444c-729f-b525-247e9c7e2245": "Arena deeayp, Wed 30 Sep 16:30", "01a0e225-2ca5-705f-87ca-326ae6576b11": "Arena mine9f, Wed 30 Sep 16:30", "01a0e225-30d9-7b06-9e6d-bf16069a800a": "Arena mine9f, Wed 30 Sep 16:30", "01a0e227-79d4-7e69-8d70-e380cee7e2df": "Arena here9f, Wed 30 Sep 16:30", "01a0e229-aa71-79e4-abcc-8b63407d1316": "Arena pie9f, Wed 30 Sep 16:30", "01a0e22b-9d34-7c08-9d08-1cd04983a220": "Arena opee9f, Wed 30 Sep 16:30", "01a0e22e-00c5-74c2-bc9c-248bae34f254": "Arena deee9f, Wed 30 Sep 16:30"},
+  "notice": "",
+  "selected_day": 30,
+  "today": "2026-09-27 Sunday",
+  "view": "month",
+  "year": 2026,
+  "you": "yos"
+}
+  act: select_day(day)  [standard, settles on return]
+       Show what is on one day of the month shown
+         day: integer — Day of the month, 1-31
+  act: show_month(direction)  [standard, settles on return]
+       Move to the next or previous month
+         direction: string — next | previous
+  act: go_to_today()  [standard, settles on return]
+       Jump back to the current month and day
+  act: add_event(date, title, all_day?, duration_min?, notes?, reminder_minutes?, time?)  [standard, settles on return]
+       Put something on the calendar
+         date: string — YYYY-MM-DD
+         title: string
+         all_day?: boolean — A whole day rather than a time; `time` and `duration_min` are not used with it
+         duration_min?: integer — How long it runs, in minutes; an hour when not given
+         notes?: string
+         reminder_minutes?: integer — How many minutes before it starts to announce it; ten when not given. All-day events are not announced
+         time?: string — HH:MM, 24-hour; needed unless `all_day` is set
+  act: delete_event(date?, id?, title?)  [sensitive, settles on return]
+       Take an event off the calendar. It is not recoverable
+         date?: string — YYYY-MM-DD, given with `title`
+         id?: string — The id the store gave the event — `add_event` answers with it and `describe` lists it for every event it shows
+         title?: string — The event's exact title, given with `date`, when the id is not known
+  act: delete_own_event(date?, id?, title?)  [standard, settles on return]
+       Take an event this caller created itself off the calendar. Anything else is `delete_event`, which asks a person first
+         date?: string — YYYY-MM-DD, given with `title`
+         id?: string — The id the store gave the event — `add_event` answers with it and `describe` lists it, marked with whether this caller may delete it unasked
+         title?: string — The event's exact title, given with `date`, when the id is not known
+  act: update_event(id, date?, duration_min?, notes?, reminder_minutes?, time?, title?)  [sensitive, settles on return]
+       Move or rename any event that is already on the calendar
+         id: string — The id the store gave the event
+         date?: string — Move it to this day, YYYY-MM-DD
+         duration_min?: integer — How long it runs, in minutes; unchanged when not given
+         notes?: string
+         reminder_minutes?: integer — How many minutes before it starts to announce it; unchanged when not given
+         time?: string — Move it to this time, HH:MM
+         title?: string — A new title
+  act: update_own_event(id, date?, duration_min?, notes?, reminder_minutes?, time?, title?)  [standard, settles on return]
+       Move or rename an event this caller created itself. Anything else is `update_event`, which asks a person first
+         id: string — The id the store gave the event
+         date?: string — Move it to this day, YYYY-MM-DD
+         duration_min?: integer — How long it runs, in minutes; unchanged when not given
+         notes?: string
+         reminder_minutes?: integer — How many minutes before it starts to announce it; unchanged when not given
+         time?: string — Move it to this time, HH:MM
+         title?: string — A new title
+  act: set_view(view)  [standard, settles on return]
+       Switch between the month, week and day views
+         view: string — month | week | day

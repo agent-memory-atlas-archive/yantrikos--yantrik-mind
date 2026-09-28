@@ -17375,6 +17375,58 @@ mod desktop_consent_and_stall_wiring {
         assert!(!outside.prompts.iter().any(|p| p.contains("Earlier on this desktop")), "a hand-over leaked outside its turn");
     }
 
+    /// E.ARENA1-F32 through the loop: with the desktop's token-mode tools connected, the model is
+    /// not offered `run_command`, and a call to it never reaches the server.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn run_command_is_neither_offered_nor_run() {
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let script: Arc<dyn LLMBackend> = Arc::new(Script {
+            at: AtomicUsize::new(0),
+            steps: vec![Step::Call("mcp.yantrik-os.run_command", serde_json::json!({"command": "printf hi > ~/x.txt"}))],
+            seen: seen.clone(),
+            timeouts: Arc::new(StdMutex::new(Vec::new())),
+        });
+        let pool = InferencePool::new(Arc::clone(&script), 1).with_provider("script").with_private_backend(script, "script");
+        let hub = Arc::new(mind_tools::McpHub::new());
+        let tool = |name: &str, read_only: bool| mind_tools::McpTool {
+            server: "yantrik-os".into(),
+            name: name.into(),
+            description: format!("{name} on this computer"),
+            read_only,
+            open_world: false,
+            destructive: false,
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+        hub.add_scripted_tool(tool("os_describe", true), vec![Ok(SHELL.to_string())]).unwrap();
+        hub.add_scripted_tool(tool("os_act", true), vec![Ok("Done".to_string())]).unwrap();
+        hub.add_scripted_tool(tool("run_command", true), vec![Ok("RAN".to_string())]).unwrap();
+        let mem: Arc<dyn MemoryFacade> = Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap());
+        let conv = ConversationEngine::new(mem, pool, "YM").with_mcp(hub.clone());
+        assert!(conv.offered_catalog().contains("mcp.yantrik-os.os_act"), "os_act must stay offered");
+        assert!(!conv.offered_catalog().contains("run_command"), "run_command was offered");
+        let _ = conv.agent_loop_for_eval("Create a text file at ~/x.txt containing hi", &TurnIdentity::primary()).await;
+        assert!(!hub.scripted_calls().iter().any(|(t, _)| t.ends_with("run_command")), "run_command reached the server");
+        assert!(seen.lock().unwrap().iter().any(|p| p.contains("is not one of the tools offered here")), "the model was not told");
+    }
+
+    /// E.ARENA1-F31 through the loop: the request quotes the event, the model describes a crowded
+    /// calendar (real capture, 185b4c0), and the work log it reads next carries the event's id.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_quoted_event_reaches_the_model_through_a_crowded_calendar() {
+        const CROWDED: &str = include_str!("../fixtures/desktop/describe_calendar_crowded_185b4c0.txt");
+        let r = run_with(
+            "Move 'Arena mine9f' on 30 September to 16:45.",
+            vec![Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "calendar"}))],
+            vec![CROWDED, CROWDED],
+            vec!["UNUSED"],
+        )
+        .await;
+        assert!(
+            r.prompts.iter().any(|p| p.contains("01a0e225-2ca5-705f-87ca-326ae6576b11")),
+            "the named event's id never reached the model"
+        );
+    }
+
     /// E.ARENA1-F30, 520's turn 390: Weather described while loading is looked at once more, and
     /// the model is shown the loaded summary; a second loading describe of it is not re-looked.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

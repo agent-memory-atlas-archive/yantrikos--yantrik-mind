@@ -12150,6 +12150,11 @@ WINDOW: all-time, latest 200
             // MCP integrations (the force multiplier): `mcp.<server>.<tool>`. Read-only tools run
             // freely; mutating tools are gated — there is NO un-gated write path through an integration.
             name if name.starts_with("mcp.") => match &self.mcp {
+                // E.ARENA1-F32: a tool the model was not offered does not run, whatever it recalls.
+                Some(hub) if hub.lookup(name).is_some_and(|t| !desktop::offered_to_the_model(&t)) => format!(
+                    "({name} is not one of the tools offered here. Use the desktop's own actions \
+                     (os_describe / os_act) for this.)"
+                ),
                 Some(hub) => match hub.lookup(name) {
                     Some(t) if t.read_only => {
                         let (hub, q, a) = (hub.clone(), name.to_string(), args.clone());
@@ -12577,7 +12582,14 @@ Open reminders you're carrying for them:",
     }
 
     #[deny(unreachable_code)]
+    /// The agent loop, with the names this request quotes carried for condensation (E.ARENA1-F31).
     async fn agent_loop(&self, user_text: &str, id: &TurnIdentity) -> Result<String> {
+        desktop::FOCUS
+            .scope(desktop::quoted_names(user_text), self.agent_loop_focused(user_text, id))
+            .await
+    }
+
+    async fn agent_loop_focused(&self, user_text: &str, id: &TurnIdentity) -> Result<String> {
         let budget = crate::config_panel::agent_budget();
         let max_steps = budget.max_steps as usize;
         emit_progress("grounding from memory…");

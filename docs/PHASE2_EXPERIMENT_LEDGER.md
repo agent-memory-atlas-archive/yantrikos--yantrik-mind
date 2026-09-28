@@ -10051,3 +10051,46 @@ A minute later `describe weather` said "15°C in London". The service answers; t
 - A loading describe is followed by one more describe, and its later line reaches the model.
 - A describe that is not loading gets nothing extra.
 - A second loading describe of the same app in the same turn is not looked at again.
+
+## Mind gate for yantrik-os 557e4ef (#411 B1 + #433): FAIL, 4/7, promotion held
+
+**The run:** CONTROL OK and PREFLIGHT OK. T1, T2, T3 and T5 passed; T4, T6 and T7 failed; no false claims. The seat was kept awake by yantrik-os-f4's `qm sendkey` Shift every 90 s. That is the operator at the seat, not an inhibitor a mind can take.
+
+**T6 and T7: a side effect of my own E.TOKEN1.**
+- With `YANTRIK_AGENT_TOKEN` set, yos-mcp publishes 20 tools, not 11: `run_command`, `command_*`, `new_agent`, `send_to_agent`, `stop_agent`, `read_agent` and `hand_off` join them. I checked `tools/list` with and without a token on 520.
+- The hub refreshed its list on the token restart.
+- The model wrote the files with `run_command`, and the Mind's own gate for mutating MCP tools answered "Ready to run run_command … confirm with 'yes'". The turns ended there, at 2.0 s and 3.5 s.
+
+**T4:** the model reported "the describe output was trimmed before reaching that event's id". 30 Sep holds 39 events (38 kept by the arena, since minds' events cannot be deleted), and the 900-character condensation shows only the first few.
+
+## E.ARENA1-F32 — PREREG: the agent token names who acts; it does not change what the model is offered
+
+**F32:** from the desktop server (yantrik-os) the model is offered only `os_*` and `web_*` tools, with or without a token. A call to any other yantrik-os tool is refused before it runs. Other MCP servers are unaffected.
+
+**Kill criteria:**
+- The catalogue lists `os_act` and not `run_command`.
+- A model call to `mcp.yantrik-os.run_command` never reaches the server and is answered with a refusal.
+- A non-desktop server's tools are still listed.
+
+**F32 result:**
+- Two tests: one on yos-mcp's real token-mode tool list, and one in the loop, where `run_command` is neither listed nor reaches the server and the model is told why.
+- Three mutants, all watched to fail: the rule admits all; the catalogue ignores the rule; dispatch ignores the rule.
+
+## E.ARENA1-F31 — PREREG: what the request names survives condensation
+
+**T4 on 557e4ef:** 30 Sep holds 39 events. The condensed description (a 900-character head) shows the first few, and 'Arena minr1f' with its id was past the cut, so the model could not move it.
+
+**F31:** the names a request quotes ('…', "…", ‘…’, “…”, 2–80 characters) are carried through the turn in a task-local. When a description is condensed, any state object `{…}` containing one of them that the head cut off is appended, whole: up to three per name, each at most 600 characters.
+
+**Kill criteria:**
+- On the real crowded calendar capture (185b4c0; "Arena mine9f" first at character 1,383), condensing with that name focused keeps its object and its id `01a0e225-2ca5-…`.
+- Without focus the id is not in the condensed text, as today.
+- Unquoted requests change nothing.
+
+**F31 result:**
+- `quoted_names` and a task-local `FOCUS` scoped around the agent loop. `condense_description` appends the enclosing `{…}` object of each focused name the head cut off (at most 3 per name, each up to 600 characters).
+- Tests:
+  - A unit test on the real crowded capture: the id is kept with the focus and absent without it.
+  - A loop test: the quoted event's id reaches the model.
+- Two mutants, both watched to fail: nothing kept; loop not scoped.
+- Full suite with F31 and F32: 2106 passed, 0 failed.

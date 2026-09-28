@@ -734,7 +734,8 @@ impl ConversationEngine {
             .desktop_attached()
             .then_some((crate::desktop::CALENDAR_PLUGIN, crate::desktop::CALENDAR_ON_DESKTOP));
         let plugins = self.plugins.lock().unwrap().catalog_where(can_run, replace);
-        match self.mcp.as_ref().map(|h| h.catalog()).unwrap_or_default() {
+        // E.ARENA1-F32: what the model is offered, which can be less than a server publishes.
+        match self.mcp.as_ref().map(|h| h.catalog_where(crate::desktop::offered_to_the_model)).unwrap_or_default() {
             m if m.trim().is_empty() => plugins,
             m => format!("{plugins}\n{m}"),
         }

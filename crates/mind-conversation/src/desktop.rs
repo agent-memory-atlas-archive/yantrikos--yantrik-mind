@@ -77,6 +77,101 @@ pub(crate) const DESKTOP_ACTIONS_BUDGET: usize = 6000;
 /// So: the head of the state, then EVERY action signature, with each action's description and
 /// argument lines while `DESKTOP_ACTIONS_BUDGET` lasts. `None` when `obs` is not a description with
 /// actions, so every other tool keeps the old clip.
+tokio::task_local! {
+    /// E.ARENA1-F31: the names this turn's request quotes, so condensing a description keeps them.
+    pub(crate) static FOCUS: Vec<String>;
+}
+
+/// E.ARENA1-F31: names quoted in a request -- 'x', "x", and the curly forms -- 2 to 80 characters.
+pub(crate) fn quoted_names(text: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for (open, close) in [('\'', '\''), ('"', '"'), ('\u{2018}', '\u{2019}'), ('\u{201c}', '\u{201d}')] {
+        let mut rest = text;
+        while let Some(i) = rest.find(open) {
+            let after = &rest[i + open.len_utf8()..];
+            let Some(j) = after.find(close) else { break };
+            let name = after[..j].trim();
+            let n = name.chars().count();
+            // An apostrophe inside a word ("don't") is not an opening quote.
+            let starts_word = i == 0 || !rest[..i].chars().last().is_some_and(char::is_alphanumeric);
+            if starts_word && (2..=80).contains(&n) && !out.iter().any(|o| o == name) {
+                out.push(name.to_string());
+            }
+            rest = &after[j + close.len_utf8()..];
+        }
+    }
+    out
+}
+
+/// E.ARENA1-F31: the smallest `{…}` object in `state` that contains `at`, if it is at most `max`.
+fn enclosing_object(state: &str, at: usize, max: usize) -> Option<&str> {
+    let bytes = state.as_bytes();
+    let mut depth = 0i32;
+    let mut start = None;
+    for j in (0..at).rev() {
+        match bytes[j] {
+            b'}' => depth += 1,
+            b'{' if depth == 0 => {
+                start = Some(j);
+                break;
+            }
+            b'{' => depth -= 1,
+            _ => {}
+        }
+    }
+    let start = start?;
+    let (mut depth, mut in_str, mut esc) = (0i32, false, false);
+    for (k, c) in state[start..].char_indices() {
+        if in_str {
+            match (esc, c) {
+                (true, _) => esc = false,
+                (false, '\\') => esc = true,
+                (false, '"') => in_str = false,
+                _ => {}
+            }
+            continue;
+        }
+        match c {
+            '"' => in_str = true,
+            '{' => depth += 1,
+            '}' => {
+                depth -= 1;
+                if depth == 0 {
+                    let obj = &state[start..start + k + 1];
+                    return (obj.chars().count() <= max).then_some(obj);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// E.ARENA1-F31: the state objects naming each focused name that the head did not show.
+fn focused_objects(state: &str, head: &str, names: &[String]) -> Vec<String> {
+    const PER_NAME: usize = 3;
+    const MAX_OBJECT: usize = 600;
+    let mut kept: Vec<String> = Vec::new();
+    for name in names {
+        let mut found = 0;
+        let mut from = 0;
+        while let Some(i) = state[from..].find(name.as_str()) {
+            let at = from + i;
+            from = at + name.len();
+            if let Some(obj) = enclosing_object(state, at, MAX_OBJECT) {
+                if !head.contains(obj) && !kept.iter().any(|k| k == obj) {
+                    kept.push(obj.to_string());
+                    found += 1;
+                }
+            }
+            if found >= PER_NAME {
+                break;
+            }
+        }
+    }
+    kept
+}
+
 pub(crate) fn condense_description(obs: &str) -> Option<String> {
     // Idempotent: the MCP boundary condenses first and the work log condenses again, and a second
     // pass must not trim a state that is already trimmed.
@@ -99,6 +194,13 @@ pub(crate) fn condense_description(obs: &str) -> Option<String> {
                     out.push_str(&field);
                 }
             }
+        }
+        // E.ARENA1-F31: what the request names, where the head cut it off. 557e4ef's T4: 39 events
+        // on the day, and 'Arena minr1f' with its id was past the cut, so it could not be moved.
+        let names = FOCUS.try_with(|f| f.clone()).unwrap_or_default();
+        for obj in focused_objects(&state, &out, &names) {
+            out.push_str("\n… kept because the request names it: ");
+            out.push_str(&obj);
         }
     }
     out.push_str(CONDENSED_MARK);
@@ -661,6 +763,15 @@ pub(crate) fn same_change_again(
             )
         })
     })
+}
+
+/// E.ARENA1-F32: whether the model is offered this MCP tool. From the desktop's server only the
+/// `os_*` and `web_*` tools: yos-mcp publishes nine more (`run_command`, agents, hand-off) when it
+/// runs with an agent token, and E.TOKEN1 gives it one. The token says who acts; it must not change
+/// what the model reaches for -- on 557e4ef the model wrote files with `run_command`, the Mind's
+/// own gate asked "confirm with yes", and T6/T7 ended there. Other servers are unaffected.
+pub(crate) fn offered_to_the_model(t: &mind_tools::McpTool) -> bool {
+    t.server != DESKTOP_SERVER || t.name.starts_with("os_") || t.name.starts_with("web_")
 }
 
 /// E.ARENA1-F21: the path a request asks to have MADE -- created, written, saved -- or `None`.
@@ -1510,6 +1621,44 @@ mod tests {
         assert!(!still_loading("Files \u{2014} 21 entries\n{\"loading\": true}"), "only the first line, the app's own summary");
         let later = loaded_since("Weather \u{2014} loading ...", "Weather \u{2014} 15\u{b0}C in London\nrevision: 1");
         assert!(later.contains("Looked again 2.0 s later: Weather \u{2014} 15\u{b0}C in London"), "{later}");
+    }
+
+    /// E.ARENA1-F32 on yos-mcp's real token-mode list (VM 520, 557e4ef).
+    #[test]
+    fn the_token_does_not_widen_what_the_model_is_offered() {
+        let t = |server: &str, name: &str| mind_tools::McpTool {
+            server: server.into(),
+            name: name.into(),
+            description: String::new(),
+            read_only: false,
+            open_world: false,
+            destructive: false,
+            input_schema: serde_json::json!({}),
+        };
+        for n in ["os_apps", "os_describe", "os_act", "os_perception", "web_read", "web_go", "web_type"] {
+            assert!(offered_to_the_model(&t("yantrik-os", n)), "{n} was offered before the token too");
+        }
+        for n in ["run_command", "command_status", "command_input", "command_kill", "new_agent", "send_to_agent", "stop_agent", "read_agent", "hand_off"] {
+            assert!(!offered_to_the_model(&t("yantrik-os", n)), "{n} arrives only with the token");
+        }
+        assert!(offered_to_the_model(&t("github", "create_issue")), "other servers are unaffected");
+    }
+
+    /// E.ARENA1-F31 on the real crowded calendar (VM 520, 185b4c0).
+    #[tokio::test]
+    async fn what_the_request_names_survives_condensation() {
+        const CROWDED: &str = include_str!("../fixtures/desktop/describe_calendar_crowded_185b4c0.txt");
+        let id = "01a0e225-2ca5-705f-87ca-326ae6576b11";
+        let plain = condense_description(CROWDED).unwrap();
+        assert!(!plain.contains(id), "control: without focus the id is past the cut");
+        let names = quoted_names("Move 'Arena mine9f' on 30 September to 16:30.");
+        assert_eq!(names, vec!["Arena mine9f".to_string()]);
+        let focused = FOCUS.scope(names, async { condense_description(CROWDED).unwrap() }).await;
+        assert!(focused.contains(id), "the named event's id was not kept");
+        assert!(focused.contains("kept because the request names it"));
+        assert!(focused.len() < plain.len() + 3 * 700, "kept whole but bounded");
+        assert_eq!(quoted_names("Open the notes app and don't close it"), Vec::<String>::new(), "no quotes, no focus");
+        assert_eq!(quoted_names("Move \u{201c}Lunch with Sam\u{201d} to 2pm"), vec!["Lunch with Sam".to_string()]);
     }
 
     #[test]

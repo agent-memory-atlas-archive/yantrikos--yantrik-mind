@@ -545,7 +545,14 @@ impl McpHub {
 
     /// A compact catalog of the connected MCP tools for the agent prompt.
     pub fn catalog(&self) -> String {
-        let tools = self.tools.lock().unwrap();
+        self.catalog_where(|_| true)
+    }
+
+    /// The catalog of the tools `keep` admits -- what a client chooses to offer its model, which
+    /// can be less than a server publishes.
+    pub fn catalog_where(&self, keep: impl Fn(&McpTool) -> bool) -> String {
+        let all = self.tools.lock().unwrap();
+        let tools: Vec<&McpTool> = all.iter().filter(|t| keep(t)).collect();
         if tools.is_empty() {
             return String::new();
         }
