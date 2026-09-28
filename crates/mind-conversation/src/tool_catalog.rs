@@ -403,7 +403,11 @@ fn core_meta_schemas() -> Vec<Value> {
             "when they say to drop/cancel/stop tracking something: CLOSE it for real in every store (reminders, threads, watches, planned items) — never just acknowledge a drop in words",
             &[("words", true)],
         ),
-        arg_schema("now", "the current date and time", &[]),
+        arg_schema(
+            "now",
+            "the current date and time where the person is -- or, with `zone` (an IANA time zone such as Asia/Tokyo), the time there too",
+            &[("zone", false)],
+        ),
         arg_schema(
             "myself",
             "your LIVE configuration, measured from the running process: model lanes and providers, which keys are present, mounted knowledge packs. Answer ANY question about your own setup from THIS — never from memory",

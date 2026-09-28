@@ -2879,6 +2879,17 @@ async fn search_plugin_routes_and_renders() {
         .contains("not configured"));
 }
 
+/// E.ARENA1-F37: the `now` tool answers the time in the zone the model names, beside the person's.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn now_answers_the_time_in_a_named_zone() {
+    let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+    let conv = ConversationEngine::new(Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap()) as Arc<dyn MemoryFacade>, pool, "YM");
+    let there = conv.run_agent_tool("now", &serde_json::json!({ "zone": "Asia/Tokyo" })).await;
+    assert!(there.contains(" in Asia/Tokyo. Here: "), "{there}");
+    let here = conv.run_agent_tool("now", &serde_json::json!({})).await;
+    assert!(!here.contains("Asia/Tokyo"), "{here}");
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
 async fn home_tool_reads_smart_home_states() {
     use mind_tools::{HaEntity, ScriptedHomeAssistantClient};

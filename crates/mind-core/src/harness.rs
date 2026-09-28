@@ -137,6 +137,17 @@ fn event_params(session: &str, turn_id: u64, event: &mind_conversation::CallEven
 }
 
 #[cfg(test)]
+mod zone_tests {
+    /// E.ARENA1-F37: the zone from a real turn's context (520, ce8c715).
+    #[test]
+    fn the_desktops_zone_is_read_from_the_context() {
+        let ctx = include_str!("../../mind-conversation/fixtures/desktop/context_handover_ce8c715.json");
+        assert_eq!(super::machine_timezone(ctx).as_deref(), Some("America/Chicago"));
+        assert_eq!(super::machine_timezone("{}"), None);
+    }
+}
+
+#[cfg(test)]
 mod card_tests {
     /// E.CARDS1: the params are the harness library's -- `{session, turn_id, event}`, `kind` inside.
     #[test]
@@ -464,6 +475,10 @@ async fn serve(
         };
         let text = turn["text"].as_str().unwrap_or_default().to_string();
         eprintln!("[harness] turn {turn_id}: {text}");
+        // E.ARENA1-F37: the person's time zone, for "now" and everything that reads local time.
+        if let Some(zone) = turn["context"].as_str().and_then(machine_timezone) {
+            mind_conversation::set_machine_timezone(Some(zone));
+        }
         if let Some(place) = turn["context"].as_str().and_then(machine_place) {
             mind_conversation::set_machine_place(Some(place));
         }
@@ -609,6 +624,12 @@ fn machine_place(context: &str) -> Option<String> {
         out.push_str(&format!(" ({tz})"));
     }
     Some(out)
+}
+
+/// E.ARENA1-F37: the person's time zone from a turn's context (`machine.timezone`), when it says.
+fn machine_timezone(context: &str) -> Option<String> {
+    let v: serde_json::Value = serde_json::from_str(context).ok()?;
+    v["machine"]["timezone"].as_str().map(str::trim).filter(|t| !t.is_empty()).map(str::to_string)
 }
 
 /// What this mind says about itself when it attaches.

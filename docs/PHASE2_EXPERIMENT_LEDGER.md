@@ -10861,3 +10861,39 @@ So a rule survives verbatim only if (2) extracted it **and** (3) admits it. Othe
 **Also found by building on Linux:** the card forwarder was awaited outside its scope, a unix-only compile error that Windows couldn't see.
 
 **Also found:** staging's disk hit 100% (6.4 MB free) from my own 8.2 GB debug target. It was freed, the Mind logged no write errors, and `target/debug` is now removed after every staging test run.
+
+## E.ARENA1-F37 — PREREG: "now" is the person's time, and any city's time is one call away
+
+**Seen live on 520** (the E.CARDS1 check, 17:05 local): "What time is it in Tokyo right now?"
+- The Mind called `now`, which answered "2026-09-28 22:05 UTC (Monday)".
+- It replied "I can't tell you the time in Tokyo right now".
+
+There are two defects:
+1. **`now` uses `YM_TZ`, which 520's unit doesn't set,** so it falls back to UTC. The desktop reports the person's zone in every turn's context (`machine.timezone`, America/Chicago), and the Mind already reads that for the place line but not for the clock. The same `now_str` rides in every turn's prompt, so the model has been told the person lives on UTC.
+2. **`now` takes no arguments.** The only way to another zone is the model's own arithmetic, which it declined.
+
+**F37:**
+- (1) Without `YM_TZ`, local time comes from the desktop's reported IANA zone. `YM_TZ` still wins, and a box with neither is unchanged.
+- (2) `now` takes an optional `zone` (an IANA name like `Asia/Tokyo`) and answers that zone's date, time, abbreviation and weekday, beside the person's own. An unknown zone is said to be unknown, with the form to use.
+
+**Kill criteria:**
+- With the desktop reporting America/Chicago and no `YM_TZ`, `now` shows CDT/CST.
+- `YM_TZ` overrides it.
+- `now {zone: Asia/Tokyo}` shows JST, 14 hours ahead of Chicago in September.
+- `now {zone: Mars/Base}` names the problem.
+- No-argument `now` with nothing configured is unchanged.
+
+**E.ARENA1-F37 — RESULT: built, and every kill criterion held.** Full suite: 2147 passed, 0 failed.
+
+**Tests:**
+- `the_persons_time_and_any_citys_time` (pure):
+  - the desktop's America/Chicago is used, and `YM_TZ` wins over it;
+  - a non-zone is ignored, and nothing configured stays UTC;
+  - at 2026-09-28 22:05Z, `now_in("Asia/Tokyo")` = "2026-09-29 07:05 JST (Tuesday) in Asia/Tokyo…";
+  - "Mars/Base" is named as not a zone, with the form to use.
+- `now_answers_the_time_in_a_named_zone` (through the engine's tool dispatch).
+- `the_desktops_zone_is_read_from_the_context` (the real 520 context fixture, ce8c715).
+
+**Mutants:**
+- M1 (the desktop's zone ignored) was watched to fail.
+- **M2 (the dispatch ignores `zone`) first survived.** The unit test called `now_in` directly. The dispatch test was added, and M2 then failed.

@@ -4265,10 +4265,9 @@ fn parse_due(s: &str) -> Option<u64> {
 /// UTC quiet window). Returns a real fixed-offset datetime so date math + formatting are in local time.
 fn local_now() -> chrono::DateTime<chrono::FixedOffset> {
     let utc = chrono::Utc::now();
-    if let Ok(name) = std::env::var("YM_TZ") {
-        if let Ok(tz) = name.trim().parse::<chrono_tz::Tz>() {
-            return utc.with_timezone(&tz).fixed_offset();
-        }
+    // E.ARENA1-F37: YM_TZ, else the zone the desktop reported for the person.
+    if let Some(tz) = person_zone() {
+        return utc.with_timezone(&tz).fixed_offset();
     }
     let off = std::env::var("YM_TZ_OFFSET_MINUTES")
         .ok()
@@ -4282,13 +4281,8 @@ fn local_now() -> chrono::DateTime<chrono::FixedOffset> {
 /// The user's tz abbreviation for display — auto-derived from the IANA zone (CDT/CST/IST/…) when YM_TZ
 /// is set, else the explicit YM_TZ_LABEL, else "UTC".
 fn tz_label() -> String {
-    if let Ok(name) = std::env::var("YM_TZ") {
-        if let Ok(tz) = name.trim().parse::<chrono_tz::Tz>() {
-            return chrono::Utc::now()
-                .with_timezone(&tz)
-                .format("%Z")
-                .to_string();
-        }
+    if let Some(tz) = person_zone() {
+        return chrono::Utc::now().with_timezone(&tz).format("%Z").to_string();
     }
     std::env::var("YM_TZ_LABEL").unwrap_or_else(|_| "UTC".to_string())
 }
@@ -4568,6 +4562,49 @@ pub fn split_handover(text: &str) -> (Option<String>, String) {
     (None, text.to_string())
 }
 
+/// E.ARENA1-F37: the person's time zone as the desktop reports it (`context.machine.timezone`), an
+/// IANA name. Local time uses it when this Mind has no `YM_TZ` of its own.
+static MACHINE_TZ: std::sync::RwLock<Option<String>> = std::sync::RwLock::new(None);
+
+/// Record the desktop's time zone for the person (`None`, or a name that is not a real zone, forgets it).
+pub fn set_machine_timezone(zone: Option<String>) {
+    let zone = zone.map(|z| z.trim().to_string()).filter(|z| z.parse::<chrono_tz::Tz>().is_ok());
+    if let Ok(mut slot) = MACHINE_TZ.write() {
+        *slot = zone;
+    }
+}
+
+/// E.ARENA1-F37: the person's zone -- this Mind's own `YM_TZ` first, else what the desktop reported.
+fn person_zone() -> Option<chrono_tz::Tz> {
+    let own = std::env::var("YM_TZ").ok();
+    let told = MACHINE_TZ.read().ok().and_then(|z| z.clone());
+    zone_from(own.as_deref(), told.as_deref())
+}
+
+/// E.ARENA1-F37: the zone to use -- this Mind's own setting first, else the desktop's word.
+fn zone_from(own: Option<&str>, desktop: Option<&str>) -> Option<chrono_tz::Tz> {
+    own.and_then(|n| n.trim().parse::<chrono_tz::Tz>().ok())
+        .or_else(|| desktop.and_then(|n| n.trim().parse::<chrono_tz::Tz>().ok()))
+}
+
+#[cfg(test)]
+mod zone_tests {
+    /// E.ARENA1-F37: the Mind's own zone wins, else the desktop's; the time elsewhere is right.
+    #[test]
+    fn the_persons_time_and_any_citys_time() {
+        use chrono::TimeZone;
+        assert_eq!(super::zone_from(None, Some("America/Chicago")), Some(chrono_tz::America::Chicago), "the desktop's zone is used");
+        assert_eq!(super::zone_from(Some("Asia/Kolkata"), Some("America/Chicago")), Some(chrono_tz::Asia::Kolkata), "YM_TZ wins");
+        assert_eq!(super::zone_from(None, Some("Mars/Base")), None, "not a zone");
+        assert_eq!(super::zone_from(None, None), None, "nothing said: unchanged (UTC)");
+        let at = chrono::Utc.with_ymd_and_hms(2026, 9, 28, 22, 5, 0).unwrap();
+        let tokyo = super::now_in("Asia/Tokyo", at);
+        assert!(tokyo.starts_with("2026-09-29 07:05 JST (Tuesday) in Asia/Tokyo"), "{tokyo}");
+        let wrong = super::now_in("Mars/Base", at);
+        assert!(wrong.contains("is not a time zone name") && wrong.contains("Asia/Tokyo"), "{wrong}");
+    }
+}
+
 pub fn set_machine_place(place: Option<String>) {
     if let Ok(mut slot) = MACHINE_PLACE.write() {
         *slot = place.filter(|p| !p.trim().is_empty());
@@ -4611,6 +4648,20 @@ fn now_str() -> String {
         tz_label(),
         n.format("%A")
     )
+}
+
+/// E.ARENA1-F37: the date and time in `zone` (an IANA name), beside the person's own.
+fn now_in(zone: &str, at: chrono::DateTime<chrono::Utc>) -> String {
+    match zone.parse::<chrono_tz::Tz>() {
+        Ok(tz) => {
+            let t = at.with_timezone(&tz);
+            format!("{} {} ({}) in {zone}. Here: {}", t.format("%Y-%m-%d %H:%M"), t.format("%Z"), t.format("%A"), now_str())
+        }
+        Err(_) => format!(
+            "`{zone}` is not a time zone name. Use an IANA name, such as Asia/Tokyo, Europe/London or America/New_York. Here: {}",
+            now_str()
+        ),
+    }
 }
 
 /// Write an HTML page to the served dir and return its shareable URL. Shared by the publish_page tool
@@ -11649,7 +11700,11 @@ WINDOW: all-time, latest 200
             }
         }
         match tool {
-            "now" | "date" | "datetime" | "time" | "getcurrentdatetime" => now_str(),
+            "now" | "date" | "datetime" | "time" | "getcurrentdatetime" => match args.get("zone").and_then(|z| z.as_str()).map(str::trim).filter(|z| !z.is_empty()) {
+                // E.ARENA1-F37: the time somewhere else, beside the person's own.
+                Some(zone) => now_in(zone, chrono::Utc::now()),
+                None => now_str(),
+            },
             // The mind's EYES ON ITSELF. Observed live 2026-08-16: asked "what LLMs are you
             // using", the loop had no introspection tool, recalled code-flavoured memories about
             // its own implementation, and confidently invented a five-backend failover chain and a
