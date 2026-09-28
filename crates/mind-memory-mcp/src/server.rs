@@ -10,16 +10,21 @@
 //! should not have to know which half the answer was filed under.
 
 use mind_memory::{MemoryHandle, MemoryHit, MemoryWrite, WrittenBy, WRITTEN_BY_KEY};
-use mind_types::{AccessContext, Belief, BeliefAssertion, MemoryFacade, RecallQuery};
+use mind_types::{AccessContext, AgentFooting, Belief, BeliefAssertion, MemoryFacade, RecallQuery};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
 use rmcp::model::*;
 use rmcp::{schemars, tool, tool_handler, tool_router, ErrorData as McpError, ServerHandler};
 use serde_json::{json, Value};
 
-/// Every client is the machine's owner — see the module doc in main.rs for why.
-fn owner() -> AccessContext {
-    AccessContext::operator_audit()
+/// Who is calling, as the server knows it (E.GRANT2).
+#[derive(Clone, Debug)]
+pub enum Caller {
+    /// Whoever holds the machine's one memory token -- today's only caller, with the machine
+    /// owner's full view, until the desktop's per-mind credentials are validated (#447 item 3).
+    MachineToken,
+    /// Another mind, on a credential the desktop validated: its own footing and its own grants.
+    Agent(AgentFooting),
 }
 
 fn ok(v: Value) -> Result<CallToolResult, McpError> {
@@ -188,15 +193,82 @@ pub struct NoInput {}
 #[derive(Clone)]
 pub struct MemoryServer {
     mem: MemoryHandle,
-    /// E.STAMP1: who is calling, as the server knows it. Until the desktop mints per-mind
-    /// credentials (#447 item 3) that is only "whoever holds the machine token".
-    caller: WrittenBy,
+    /// E.STAMP1/E.GRANT2: who is calling, as the server knows it.
+    caller: Caller,
     tool_router: ToolRouter<MemoryServer>,
 }
 
 impl MemoryServer {
     pub fn new(mem: MemoryHandle) -> Self {
-        Self { mem, caller: WrittenBy::machine_token(), tool_router: Self::tool_router() }
+        Self { mem, caller: Caller::MachineToken, tool_router: Self::tool_router() }
+    }
+
+    /// E.GRANT2: the same server, speaking to another mind. Only a validated footing gets here.
+    pub fn for_agent(mem: MemoryHandle, footing: AgentFooting) -> Self {
+        Self { mem, caller: Caller::Agent(footing), tool_router: Self::tool_router() }
+    }
+
+    /// The footing every read runs under.
+    fn ctx(&self) -> AccessContext {
+        match &self.caller {
+            Caller::MachineToken => AccessContext::operator_audit(),
+            Caller::Agent(f) => AccessContext::Agent(f.clone()),
+        }
+    }
+
+    /// Who a write is stamped as.
+    fn written_by(&self) -> WrittenBy {
+        match &self.caller {
+            Caller::MachineToken => WrittenBy::machine_token(),
+            Caller::Agent(f) => WrittenBy { mind: f.mind().to_string(), via: "mcp".into() },
+        }
+    }
+
+    /// E.GRANT2: refuse before the engine is touched when this caller lacks `grant`. The refusal
+    /// names the grant and nothing else.
+    fn need(&self, grant: &str) -> Result<(), McpError> {
+        match &self.caller {
+            Caller::MachineToken => Ok(()),
+            Caller::Agent(f) if f.has(grant) => Ok(()),
+            Caller::Agent(_) => Err(McpError::invalid_params(
+                format!("refused: this mind has no `{grant}` grant -- the person can give it in Settings -> Memory"),
+                None,
+            )),
+        }
+    }
+
+    /// E.GRANT2: may this caller forget `target`? The machine token may forget anything, as
+    /// today. Another mind only what it alone wrote.
+    async fn may_forget(&self, kind: &str, target: &str) -> Result<(), McpError> {
+        let Caller::Agent(f) = &self.caller else {
+            return Ok(());
+        };
+        let own = match kind {
+            "memory" => matches!(
+                self.mem.memory_written_by(target).await.map_err(|e| fail("forget memory", e))?,
+                Some(Some(w)) if w.mind == f.mind() && w.via == "mcp"
+            ),
+            "belief" => match self.mem.explain_belief(target, &self.ctx()).await.map_err(|e| fail("forget belief", e))? {
+                Some((belief, evidence)) => {
+                    let authors = self.mem.belief_authors(&belief.statement).await.map_err(|e| fail("forget belief", e))?;
+                    let stamped: u64 = authors.iter().map(|a| a.evidence).sum();
+                    !authors.is_empty()
+                        && authors.iter().all(|a| a.mind == f.mind() && a.via == "mcp")
+                        && stamped >= evidence.len() as u64
+                }
+                None => false,
+            },
+            _ => return Ok(()), // the tool itself refuses an unknown kind
+        };
+        if own {
+            Ok(())
+        } else {
+            Err(McpError::invalid_params(
+                "refused: this was not written by this mind alone -- forgetting it is the person's, in Settings -> Memory"
+                    .to_string(),
+                None,
+            ))
+        }
     }
 }
 
@@ -204,10 +276,11 @@ impl MemoryServer {
 impl MemoryServer {
     #[tool(description = "Store a flat memory — a fact, an event, or a how-to — recalled later by meaning. Returns its rid.")]
     async fn remember(&self, Parameters(i): Parameters<RememberInput>) -> Result<CallToolResult, McpError> {
+        self.need("remember")?;
         let rid = self
             .mem
             .remember_memory(MemoryWrite {
-                written_by: self.caller.clone(),
+                written_by: self.written_by(),
                 text: i.text,
                 memory_type: i.memory_type,
                 importance: i.importance.clamp(0.0, 1.0),
@@ -231,13 +304,14 @@ impl MemoryServer {
 
     #[tool(description = "Recall what this machine knows about something: beliefs and memories together, each labelled with its kind. Call this before answering anything that depends on the person, their work, or earlier conversations.")]
     async fn recall(&self, Parameters(i): Parameters<RecallInput>) -> Result<CallToolResult, McpError> {
+        self.need("recall_ordinary")?;
         let top_k = i.top_k.clamp(1, 50);
         let want_beliefs = matches!(i.include.as_str(), "all" | "beliefs");
         let want_memories = matches!(i.include.as_str(), "all" | "memories");
 
         let beliefs = if want_beliefs {
             self.mem
-                .recall_typed(RecallQuery { text: i.query.clone(), top_k, kind: None }, &owner())
+                .recall_typed(RecallQuery { text: i.query.clone(), top_k, kind: None }, &self.ctx())
                 .await
                 .map_err(|e| fail("recall beliefs", e))?
         } else {
@@ -245,7 +319,7 @@ impl MemoryServer {
         };
         let memories = if want_memories {
             self.mem
-                .recall_memories(&i.query, top_k, i.namespace.as_deref(), &owner())
+                .recall_memories(&i.query, top_k, i.namespace.as_deref(), &self.ctx())
                 .await
                 .map_err(|e| fail("recall memories", e))?
         } else {
@@ -286,6 +360,7 @@ impl MemoryServer {
 
     #[tool(description = "Add evidence for or against a belief. Creates the belief if it is new; otherwise updates its confidence. Use for things the person has told you or you have established, not for passing remarks.")]
     async fn believe(&self, Parameters(i): Parameters<BelieveInput>) -> Result<CallToolResult, McpError> {
+        self.need("believe")?;
         let polarity = match i.direction.as_str() {
             "supports" => 1.0,
             "contradicts" => -1.0,
@@ -306,7 +381,7 @@ impl MemoryServer {
                     source_event: i.source,
                     provenance: i.provenance,
                 },
-                self.caller.clone(),
+                self.written_by(),
             )
             .await
             .map_err(|e| fail("believe", e))?;
@@ -315,9 +390,10 @@ impl MemoryServer {
 
     #[tool(description = "List beliefs whose statement contains these words, most confident first.")]
     async fn beliefs(&self, Parameters(i): Parameters<BeliefsInput>) -> Result<CallToolResult, McpError> {
+        self.need("recall_ordinary")?;
         let found = self
             .mem
-            .beliefs_matching_n(&i.query, i.limit.clamp(1, 100), &owner())
+            .beliefs_matching_n(&i.query, i.limit.clamp(1, 100), &self.ctx())
             .await
             .map_err(|e| fail("beliefs", e))?;
         ok(json!({ "count": found.len(), "beliefs": found.iter().map(belief_json).collect::<Vec<_>>() }))
@@ -325,7 +401,8 @@ impl MemoryServer {
 
     #[tool(description = "Show a belief with every piece of evidence behind it.")]
     async fn explain(&self, Parameters(i): Parameters<StatementInput>) -> Result<CallToolResult, McpError> {
-        match self.mem.explain_belief(&i.statement, &owner()).await.map_err(|e| fail("explain", e))? {
+        self.need("recall_ordinary")?;
+        match self.mem.explain_belief(&i.statement, &self.ctx()).await.map_err(|e| fail("explain", e))? {
             Some((belief, evidence)) => {
                 // E.STAMP1: who put the evidence there, and how much of it nobody stamped.
                 let authors = self.mem.belief_authors(&belief.statement).await.map_err(|e| fail("explain authors", e))?;
@@ -348,6 +425,7 @@ impl MemoryServer {
 
     #[tool(description = "Forget a memory (by rid) or a belief (by statement). Nothing is erased: it is tombstoned and stops being recalled.")]
     async fn forget(&self, Parameters(i): Parameters<ForgetInput>) -> Result<CallToolResult, McpError> {
+        self.may_forget(&i.kind, &i.target).await?;
         let done = match i.kind.as_str() {
             "memory" => self.mem.forget_memory(&i.target).await.map_err(|e| fail("forget memory", e))?,
             "belief" => match i.reason.as_deref() {
@@ -367,12 +445,14 @@ impl MemoryServer {
 
     #[tool(description = "Open contradictions between beliefs, most severe first.")]
     async fn conflicts(&self, Parameters(_): Parameters<NoInput>) -> Result<CallToolResult, McpError> {
-        let found = self.mem.conflicts(&owner()).await.map_err(|e| fail("conflicts", e))?;
+        self.need("recall_ordinary")?;
+        let found = self.mem.conflicts(&self.ctx()).await.map_err(|e| fail("conflicts", e))?;
         ok(json!({ "count": found.len(), "conflicts": found }))
     }
 
     #[tool(description = "Record a relationship between two things, e.g. Pranab --lives_in--> Bentonville.")]
     async fn relate(&self, Parameters(i): Parameters<RelateInput>) -> Result<CallToolResult, McpError> {
+        self.need("believe")?;
         self.mem
             .relate(&i.src, &i.dst, &i.rel, i.weight)
             .await
@@ -382,7 +462,8 @@ impl MemoryServer {
 
     #[tool(description = "Reflect on a question: the relevant beliefs, open conflicts, goals and preferences, summarised.")]
     async fn reflect(&self, Parameters(i): Parameters<ReflectInput>) -> Result<CallToolResult, McpError> {
-        let r = self.mem.reflect(&i.question, &owner()).await.map_err(|e| fail("reflect", e))?;
+        self.need("recall_ordinary")?;
+        let r = self.mem.reflect(&i.question, &self.ctx()).await.map_err(|e| fail("reflect", e))?;
         ok(json!({
             "summary": r.summary,
             "beliefs": r.beliefs.iter().map(belief_json).collect::<Vec<_>>(),
@@ -487,6 +568,68 @@ mod tests {
             .collect();
         assert_eq!(who, vec![("machine-token".to_string(), 1), ("yantrik-mind".to_string(), 1)], "{got}");
         assert_eq!(got["unattributed_evidence"], 0, "{got}");
+    }
+
+    fn agent(mem: &MemoryHandle, grants: &[&str]) -> MemoryServer {
+        let answer = json!({"v": 1, "person_uid": 1000, "mind": "hermes", "attach": "hermes:c1@s1", "grants": grants, "valid_for_ms": 2000});
+        MemoryServer::for_agent(mem.clone(), AgentFooting::from_validation(&answer, 1000).unwrap().0)
+    }
+
+    /// E.GRANT2: an agent with no grants is refused on every tool but forget, before the engine
+    /// is touched; with `recall_ordinary` it reads, and still cannot see a Health belief.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn every_tool_asks_for_its_grant() {
+        let mem = MemoryHandle::spawn(":memory:", 64).unwrap();
+        let bare = agent(&mem, &[]);
+        let refused = |r: Result<CallToolResult, McpError>| r.err().map(|e| e.message.to_string()).unwrap_or_default();
+        assert!(refused(bare.remember(input(json!({"text": "x"}))).await).contains("`remember`"));
+        assert!(refused(bare.recall(input(json!({"query": "x"}))).await).contains("`recall_ordinary`"));
+        assert!(refused(bare.believe(input(json!({"statement": "x"}))).await).contains("`believe`"));
+        assert!(refused(bare.beliefs(input(json!({"query": "x"}))).await).contains("`recall_ordinary`"));
+        assert!(refused(bare.explain(input(json!({"statement": "x"}))).await).contains("`recall_ordinary`"));
+        assert!(refused(bare.conflicts(input(json!({}))).await).contains("`recall_ordinary`"));
+        assert!(refused(bare.relate(input(json!({"src": "a", "dst": "b", "rel": "r"}))).await).contains("`believe`"));
+        assert!(refused(bare.reflect(input(json!({"question": "x"}))).await).contains("`recall_ordinary`"));
+
+        let health = "The dentist appointment is on Friday";
+        mem.remember_as_belief(BeliefAssertion { statement: health.into(), polarity: 1.0, weight: 2.0, source_event: None, provenance: "told".into() })
+            .await
+            .unwrap();
+        mem.set_belief_sensitivity(health, mind_types::Sensitivity::Health).await.unwrap();
+        let reader = agent(&mem, &["recall_ordinary"]);
+        let got = text(reader.beliefs(input(json!({"query": "dentist Friday"}))).await.unwrap());
+        assert_eq!(got["count"], 0, "an agent without recall_health saw a Health belief: {got}");
+        let owner = MemoryServer::new(mem.clone());
+        let got = text(owner.beliefs(input(json!({"query": "dentist Friday"}))).await.unwrap());
+        assert_eq!(got["count"], 1, "the machine token's view changed: {got}");
+    }
+
+    /// E.GRANT2: an agent's writes carry its own name, and it forgets only what it alone wrote.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_mind_forgets_only_what_it_alone_wrote() {
+        let mem = MemoryHandle::spawn(":memory:", 64).unwrap();
+        let hermes = agent(&mem, &["recall_ordinary", "remember", "believe"]);
+        let owner = MemoryServer::new(mem.clone());
+
+        let mine = text(hermes.remember(input(json!({"text": "Hermes noted the porch light is broken"}))).await.unwrap())["rid"].as_str().unwrap().to_string();
+        let theirs = text(owner.remember(input(json!({"text": "The porch step is loose"}))).await.unwrap())["rid"].as_str().unwrap().to_string();
+        let got = text(hermes.recall(input(json!({"query": "porch light broken", "include": "memories"}))).await.unwrap());
+        let row = got["results"].as_array().unwrap().iter().find(|r| r["rid"] == mine.as_str()).cloned().unwrap();
+        assert_eq!(row["written_by"]["mind"], "hermes", "{row}");
+
+        assert!(hermes.forget(input(json!({"kind": "memory", "target": theirs}))).await.is_err(), "forgot a memory it did not write");
+        assert!(hermes.forget(input(json!({"kind": "memory", "target": mine}))).await.is_ok(), "could not forget its own memory");
+
+        let solo = "The garden hose lives in the shed";
+        let shared = "The recycling goes out on Thursday";
+        hermes.believe(input(json!({"statement": solo}))).await.unwrap();
+        hermes.believe(input(json!({"statement": shared}))).await.unwrap();
+        mem.remember_as_belief(BeliefAssertion { statement: shared.into(), polarity: 1.0, weight: 1.0, source_event: None, provenance: "told".into() })
+            .await
+            .unwrap();
+        assert!(hermes.forget(input(json!({"kind": "belief", "target": shared}))).await.is_err(), "forgot a belief the Mind also holds");
+        assert!(hermes.forget(input(json!({"kind": "belief", "target": solo}))).await.is_ok(), "could not forget a belief only it asserted");
+        assert!(owner.forget(input(json!({"kind": "belief", "target": shared}))).await.is_ok(), "the machine token's forget changed");
     }
 
     /// E.STAMP1: a stale versioned update is dropped, and adds no stamp.

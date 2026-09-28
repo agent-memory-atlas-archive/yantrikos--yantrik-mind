@@ -10374,3 +10374,54 @@ yantrik-os #447, Phase 1 item (3), the kernel half. Design: #447 comment 5874351
 **M1 and M2 are caught only by the kernel test.** On the store, the lens's own Agent branch already stops them. They are the second layer, which is what GPT asked for: the rule holds at the kernel even for a caller that doesn't go through the lens.
 
 **Not yet reachable.** The memory server still runs as `operator_audit()` until the door client exists. That client, the per-tool gate and forget-own come next, after the real 520 capture of `memory_validate`.
+
+## E.GRANT2 — PREREG: every tool asks for its grant; a mind forgets only what it alone wrote
+
+yantrik-os #447, Phase 1 item (3), the server half without the wire. The server gets a `Caller`:
+- `MachineToken`, today's only caller, which keeps every tool as it is now;
+- `Agent(AgentFooting)`, built only from a validated answer (E.GRANT1).
+
+The door client that produces an `Agent` caller comes after the real 520 capture, so **nothing here is reachable yet.**
+
+**For an Agent caller:**
+- Reads run under its footing:
+  - `recall`, `beliefs`, `explain`, `conflicts`, `reflect` need `recall_ordinary`;
+  - `remember` needs `remember`;
+  - `believe` and `relate` need `believe`.
+- A missing grant is refused before the engine is touched, and the refusal names only the grant.
+- **Writes are stamped with the mind's own id** (E.STAMP1), not `machine-token`.
+- **`forget`:**
+  - a memory only when its stamp names this mind;
+  - a belief only when every stamped contributor is this mind and no evidence is unattributed.
+
+  Anything else is refused as the person's to forget in Settings → Memory.
+
+**Kill criteria:**
+- An agent with no grants is refused on every tool except `forget`.
+- With `recall_ordinary`, `recall` works and still hides a Health belief.
+- An agent's `remember` is stamped with its mind.
+- It can forget its own memory, but not one the machine token wrote.
+- It can forget a belief only it asserted, but not one the Mind also asserted.
+- A machine-token caller behaves exactly as before.
+
+**E.GRANT2 — RESULT: built, and every kill criterion held.** Full suite: 2124 passed, 0 failed.
+
+**`every_tool_asks_for_its_grant`:**
+- An agent with no grants is refused on all eight tools other than `forget`, each refusal naming its grant.
+- With `recall_ordinary`, `beliefs` returns 0 for a Health belief.
+- The machine token still sees that belief (1), so its view is unchanged.
+
+**`a_mind_forgets_only_what_it_alone_wrote`:**
+- An agent's memory recalls as `written_by.mind = hermes`.
+- It can't forget a machine-token memory, and can forget its own.
+- It can't forget a belief the Mind also asserted, and can forget one only it asserted.
+- The machine token's forget is unchanged.
+
+**Mutants, each watched to fail** (restores touched):
+- M1: a missing grant allowed.
+- M2: the agent reads as the operator.
+- M3: the agent's writes stamped as the machine token.
+- M4: forget any memory.
+- M5: forget a belief it only shares.
+
+**Still unreachable:** `MemoryServer::for_agent` has no caller outside tests until the door client, which comes after the 520 capture.

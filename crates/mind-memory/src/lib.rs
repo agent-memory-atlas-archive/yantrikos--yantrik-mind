@@ -87,6 +87,11 @@ enum Cmd {
         rid: String,
         reply: Reply<Option<String>>,
     },
+    /// E.GRANT2: who the server stamped a flat memory as written by (None: no such memory).
+    MemoryWrittenBy {
+        rid: String,
+        reply: Reply<Option<Option<WrittenBy>>>,
+    },
     AssertBelief {
         statement: String,
         signed_weight: f64,
@@ -4801,6 +4806,19 @@ impl MemoryHandle {
                             });
                             let _ = reply.send(r);
                         }
+                        Cmd::MemoryWrittenBy { rid, reply } => {
+                            let r = db
+                                .get(&rid)
+                                .map(|o| {
+                                    o.map(|m| {
+                                        m.metadata
+                                            .get(WRITTEN_BY_KEY)
+                                            .and_then(|w| serde_json::from_value::<WrittenBy>(w.clone()).ok())
+                                    })
+                                })
+                                .map_err(|e| e.to_string());
+                            let _ = reply.send(r);
+                        }
                         Cmd::GetText { rid, reply } => {
                             let r = db.get(&rid).map(|o| o.map(|m| m.text)).map_err(|e| e.to_string());
                             let _ = reply.send(r);
@@ -5661,6 +5679,13 @@ impl MemoryHandle {
         let text = text.into();
         self.call(|reply| Cmd::Record { text, reply }).await
     }
+    /// E.GRANT2: the server's stamp on a flat memory. `None` = no such memory; `Some(None)` = one
+    /// from before stamping.
+    pub async fn memory_written_by(&self, rid: &str) -> Result<Option<Option<WrittenBy>>> {
+        let rid = rid.to_string();
+        self.call(|reply| Cmd::MemoryWrittenBy { rid, reply }).await
+    }
+
     pub async fn get_text(&self, rid: &str) -> Result<Option<String>> {
         let rid = rid.to_string();
         self.call(|reply| Cmd::GetText { rid, reply }).await
