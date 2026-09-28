@@ -10190,3 +10190,37 @@ yantrik-os #442 adds `shell.files_stat path=`: `exists: true` (kind, size, modif
 - The closing note "(Nothing is at … yet — it was not created.)" was **true** this time: the desktop's `files_stat` said not_found, and the file was not there. E.HOME3 does what it should.
 
 **The open problem:** on two live tries of this shape the model finished one (07:31) and narrated one (08:51). F33's nudge ends "…or say plainly that it was not made", and the model took that exit. **Next candidate (not built):** F33's nudge without the escape clause, when the desktop has shown the path is actionable (the parent is reachable, the editor exists). This needs a measured before/after on several tries, not one live turn.
+
+## E.MEMSCOPE1 — PREREG: an assertion never moves a belief's scope
+
+Part of yantrik-os #447, Phase 1 item (1). The design first said "scoped writes don't scope". That was my misreading of the trait default, corrected on #447. The real engine (`MemoryHandle::remember_as_belief_scoped`) writes the belief, then tags its canonical proposition in `mind_belief_scope`, and three things are wrong:
+1. **The last writer wins.** The tag is `ON CONFLICT DO UPDATE`, keyed by the proposition, and `find_belief` merges case and whitespace variants into one node. Anyone asserting the same statement moves the whole belief, with its confidence and evidence, into their scope. Private(A) → Private(B) hands A's record to B, and Private → Shared shows it to everyone.
+2. **A failed tag is discarded** (`let _ =`). The belief lands untagged, which reads as primary-only.
+3. **Write and tag are two engine commands.** In between, the belief is untagged, and any command queued between them sees it that way.
+
+**E.MEMSCOPE1:**
+- A scoped assertion is one engine command.
+- A belief that does not exist yet is tagged *before* it is written. A failed write removes that tag, and a failed tag fails the assertion.
+- A belief that already exists keeps its scope, whether that's its tag or legacy primary-only. The assertion adds evidence and does not re-scope it.
+- Widening a belief's scope is left to an explicit act by the person, which is not built here.
+
+**Kill criteria:**
+- Private(primary) then the same statement as Private(wife): the wife does not see it, and the primary still does.
+- Then as Shared: the wife still does not see it.
+- A case variant merged into it: the same.
+- A legacy untagged belief asserted as Shared stays primary-only.
+- A belief the write gate refuses leaves no tag.
+- A tag that cannot be written fails the assertion and leaves no belief.
+- The existing isolation tests still pass.
+
+**E.MEMSCOPE1 — RESULT: built, and every kill criterion held.**
+- `an_assertion_never_moves_a_beliefs_scope`: Private(wife), Shared, and an upper-case variant each leave the primary's belief with the primary; a legacy belief asserted as Shared stays primary-only.
+- `a_scoped_write_and_its_tag_stand_or_fall_together`: a gate-refused belief leaves no tag, and with no scope table the assertion fails and leaves no belief.
+- `read_isolation_keeps_a_private_belief_from_another_member` still passes.
+
+Each mutation was watched to fail its own test:
+- re-tagging an existing belief fails the move test;
+- ignoring a failed tag fails the stand-or-fall test;
+- dropping the cleanup fails the stand-or-fall test.
+
+The `SetBeliefScope` command is removed, so nothing re-scopes a belief any more. Full suite: 2112 passed, 0 failed.

@@ -93,6 +93,8 @@ enum Cmd {
         source: String,
         provenance: String,
         evidence_version: Option<u64>,
+        /// E.MEMSCOPE1: the scope a NEW belief is tagged with, in this same command.
+        scope: Option<String>,
         reply: Reply<Belief>,
     },
     RecallTyped {
@@ -377,12 +379,8 @@ enum Cmd {
         value: String,
         reply: Reply<()>,
     },
-    // group-chat read-isolation: per-belief visibility scope (keyed by proposition)
-    SetBeliefScope {
-        proposition: String,
-        scope: String,
-        reply: Reply<()>,
-    },
+    // group-chat read-isolation: per-belief visibility scope (keyed by proposition). Written only
+    // inside a scoped AssertBelief (E.MEMSCOPE1) -- there is no command that re-scopes a belief.
     BeliefScopeMap {
         reply: Reply<std::collections::HashMap<String, String>>,
     },
@@ -729,6 +727,35 @@ fn assert_belief(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| "belief vanished after assert".to_string())?;
     Ok(to_belief_dto(&updated))
+}
+
+/// E.MEMSCOPE1: assert a belief with a visibility scope, in one engine command. A belief that does
+/// not exist yet is tagged BEFORE it is written, so no reader ever sees it untagged, and a write that
+/// fails takes its tag back. A belief that already exists keeps the scope it has (its tag, or none =
+/// legacy primary-only): an assertion adds evidence, it never moves the belief -- the tag is keyed by
+/// the proposition and `find_belief` merges variants, so re-tagging handed one person's belief, with
+/// its whole history, to whoever said the same words next, or to everyone.
+#[allow(clippy::too_many_arguments)]
+fn assert_belief_scoped(
+    db: &YantrikDB,
+    alloc: &mut NodeIdAllocator,
+    statement: &str,
+    signed_weight: f64,
+    source: &str,
+    provenance: &str,
+    evidence_version: Option<u64>,
+    scope: &str,
+) -> std::result::Result<Belief, String> {
+    let key = normalize_belief_text(statement);
+    if find_belief(db, &key).is_some() {
+        return assert_belief(db, alloc, statement, signed_weight, source, provenance, evidence_version);
+    }
+    set_belief_scope(db, &key, scope)?;
+    let result = assert_belief(db, alloc, statement, signed_weight, source, provenance, evidence_version);
+    if result.is_err() {
+        let _ = db.conn().execute("DELETE FROM mind_belief_scope WHERE proposition = ?1", [&key]);
+    }
+    result
 }
 
 /// Record into the flat vector store. Uses native `record_text` (auto-embed) when an embedder is
@@ -4662,8 +4689,11 @@ impl MemoryHandle {
                             let r = db.get(&rid).map(|o| o.map(|m| m.text)).map_err(|e| e.to_string());
                             let _ = reply.send(r);
                         }
-                        Cmd::AssertBelief { statement, signed_weight, source, provenance, evidence_version, reply } => {
-                            let result = assert_belief(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version);
+                        Cmd::AssertBelief { statement, signed_weight, source, provenance, evidence_version, scope, reply } => {
+                            let result = match &scope {
+                                Some(scope) => assert_belief_scoped(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version, scope),
+                                None => assert_belief(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version),
+                            };
                             if result.is_ok() {
                                 let now = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -4989,9 +5019,6 @@ impl MemoryHandle {
                         }
                         Cmd::SetProfile { key, value, reply } => {
                             let _ = reply.send(set_profile(&db, &key, &value));
-                        }
-                        Cmd::SetBeliefScope { proposition, scope, reply } => {
-                            let _ = reply.send(set_belief_scope(&db, &proposition, &scope));
                         }
                         Cmd::BeliefScopeMap { reply } => {
                             let _ = reply.send(belief_scope_map(&db));
@@ -5620,6 +5647,7 @@ impl MemoryFacade for MemoryHandle {
             source,
             provenance,
             evidence_version: None,
+            scope: None,
             reply,
         })
         .await
@@ -5642,6 +5670,7 @@ impl MemoryFacade for MemoryHandle {
             source,
             provenance,
             evidence_version: Some(evidence_version),
+            scope: None,
             reply,
         })
         .await
@@ -5653,17 +5682,24 @@ impl MemoryFacade for MemoryHandle {
         a: BeliefAssertion,
         scope: mind_types::Scope,
     ) -> Result<Belief> {
-        let belief = self.remember_as_belief(a).await?;
-        // Tag by the CANONICAL proposition (find_belief may have merged a paraphrase into an existing node).
-        let (proposition, tag) = (belief.statement.clone(), scope.as_tag());
-        let _ = self
-            .call(|reply| Cmd::SetBeliefScope {
-                proposition,
-                scope: tag,
-                reply,
-            })
-            .await;
-        Ok(belief)
+        // E.MEMSCOPE1: one command -- a new belief is tagged before it exists, an existing one keeps
+        // its scope, and a tag that cannot be written fails the assertion.
+        let signed_weight = a.polarity * a.weight.abs();
+        let (statement, source, provenance) = (
+            a.statement,
+            a.source_event.unwrap_or_default(),
+            a.provenance,
+        );
+        self.call(|reply| Cmd::AssertBelief {
+            statement,
+            signed_weight,
+            source,
+            provenance,
+            evidence_version: None,
+            scope: Some(scope.as_tag()),
+            reply,
+        })
+        .await
     }
 
     // ── Purpose Gate v1: sensitivity overrides + the standing-grant ledger ──
@@ -8992,6 +9028,73 @@ MIIEvg==" });
             "formatting variant merges, contradiction (1.70 vs 1.96) stays separate: {:?}",
             rust.iter().map(|r| &r.item.text).collect::<Vec<_>>()
         );
+    }
+
+    /// E.MEMSCOPE1: saying the same words later -- as another person, as the household, or with
+    /// different capitals -- never moves a belief out of the scope it was made in.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn an_assertion_never_moves_a_beliefs_scope() {
+        use mind_types::Scope;
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let (primary, wife) = (Scope::Private("primary".into()), Scope::Private("wife".into()));
+        let tell = |s: &str| BeliefAssertion {
+            statement: s.into(),
+            polarity: 1.0,
+            weight: 0.9,
+            source_event: None,
+            provenance: "told".into(),
+        };
+        let gift = "I am getting my wife a gold watch for her birthday";
+        let q = || RecallQuery { text: "birthday gift watch".into(), top_k: 10, kind: None };
+        let sees = |v: &Vec<mind_types::Recalled>| v.iter().any(|r| r.item.text.contains("gold watch"));
+        mem.remember_as_belief_scoped(tell(gift), primary.clone()).await.unwrap();
+        for (said, scope) in [
+            (gift.to_string(), wife.clone()),
+            (gift.to_string(), Scope::Shared),
+            (gift.to_uppercase(), Scope::Shared),
+        ] {
+            mem.remember_as_belief_scoped(tell(&said), scope.clone()).await.unwrap();
+            let w = mem.recall_typed(q(), &member_ctx(wife.clone())).await.unwrap();
+            assert!(!sees(&w), "LEAK: saying it as {scope:?} moved the primary's belief to the wife");
+            let p = mem.recall_typed(q(), &member_ctx(primary.clone())).await.unwrap();
+            assert!(sees(&p), "saying it as {scope:?} took the belief away from the primary");
+        }
+        // A legacy belief (no tag = primary-only) is not widened by a household assertion either.
+        let legacy = "The spare key is under the blue flowerpot";
+        mem.remember_as_belief(tell(legacy)).await.unwrap();
+        mem.remember_as_belief_scoped(tell(legacy), Scope::Shared).await.unwrap();
+        let w = mem
+            .recall_typed(RecallQuery { text: "spare key flowerpot".into(), top_k: 10, kind: None }, &member_ctx(wife))
+            .await
+            .unwrap();
+        assert!(!w.iter().any(|r| r.item.text.contains("flowerpot")), "LEAK: a household assertion widened a legacy belief");
+    }
+
+    /// E.MEMSCOPE1: a scoped belief the write gate refuses leaves no tag behind; a tag that cannot be
+    /// written fails the assertion and leaves no belief.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_scoped_write_and_its_tag_stand_or_fall_together() {
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let refused = "The safe combination is 47-12-33";
+        let told = BeliefAssertion {
+            statement: refused.into(),
+            polarity: 1.0,
+            weight: 0.9,
+            source_event: None,
+            provenance: "told".into(),
+        };
+        assert!(mem.remember_as_belief_scoped(told, mind_types::Scope::Shared).await.is_err(), "the gate let a credential through");
+        assert!(
+            !mem.belief_scopes().await.keys().any(|k| k.contains("47-12-33")),
+            "a refused belief left its tag behind"
+        );
+
+        // No scope table: the tag cannot be written, so the belief must not be either.
+        let db = YantrikDB::new(":memory:", 8).unwrap();
+        let mut alloc = NodeIdAllocator::new();
+        let r = assert_belief_scoped(&db, &mut alloc, "Dinner on Friday is at seven", 0.9, "", "told", None, "shared");
+        assert!(r.is_err(), "the assertion succeeded without its tag");
+        assert!(find_belief(&db, "Dinner on Friday is at seven").is_none(), "an untagged belief was left behind");
     }
 
     /// THE GROUP-CHAT MOAT: a private fact from one member must NEVER surface to another. The
