@@ -10798,3 +10798,22 @@ Mind 5d31079 (sha256 1048eccd5fe97cc8), with yantrik-os #464 (yos waits for a st
 2. **`scene.py` doesn't parse.** Its first line is prose, not a `#` comment, so `blender --python scene.py` fails on line 1. Candidate rule: a `.py` the Mind writes must at least parse before `save_as`.
 
 Neither is a correctness failure of this turn, and both wait for a second instance before any rule.
+
+## E.COMPACT1 — PREREG (measure first): does a rule the person states survive long sessions?
+
+yantrik-os #472, from the research sweep #463 ("The Compaction Cliff", 2608.22752, unread by me: safety rules kept at 53% after one compaction round and 10% after five).
+
+**How the Mind keeps a stated rule today (read from code):** there are three paths.
+1. **The rolling summary** (`briefing.rs`): older turns are merged by an LLM into `conversation_summary`, **capped at 220 words per round**, and ridden into every turn for the primary viewer only. The prompt asks it to keep "decisions + preferences", but each round rewrites the whole summary.
+2. **Consolidation extraction** (`lib.rs` ~6690): an LLM pass extracts `preferences` from the transcript into `store_preference`, a paraphrase of the rule, stored verbatim as extracted.
+3. **The working set** carries stored preferences into every turn, **under a budget** (`output_scope.rs` `take(&mut out.preferences, …, &mut budget)`), so a long preference list can be cut.
+
+So a rule survives verbatim only if (2) extracted it **and** (3) admits it. Otherwise its only carrier is (1), the shape the paper measured decaying.
+
+**The measurement** (staging, a real model, no code change): state N = 8 constraints of mixed kinds (a timing rule, a person to ask first, a format rule, a no-go topic, …) in ordinary conversation, then age them past the raw-turn window through K = 1, 3, 5 summary rounds. At each K, record:
+- (a) whether each rule is in the preferences store, and whether its paraphrase still carries the constraint;
+- (b) whether the rolling summary still carries it;
+- (c) whether the working set admitted it this turn;
+- (d) behaviour: a probe request that the rule should change.
+
+**Decision rule, fixed now:** if every rule stays in (a) and (c) at K = 5 and (d) holds, nothing is built. If (a) or (c) drop rules, the fix is typed routing: rules and constraints go to a verbatim, unbudgeted "standing rules" channel, and episodes go to the summary. Rebuilding (1) or raising the 220-word cap doesn't count as a fix.
