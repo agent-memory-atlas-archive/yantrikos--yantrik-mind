@@ -67,7 +67,11 @@ cat > "$ROOT/BUILD" <<EOF
 name=$NAME
 commit=$COMMIT
 built=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+agent_token=1
 EOF
+# agent_token=1: this Mind hands each conversation's agent token to its desktop tools (E.TOKEN1,
+# bae1353). yantrik-os #434 refuses to put a Mind into an image without it: under the minds'
+# account (#411) a Mind without it has every desktop act refused.
 
 mkdir -p "$OUT"
 TARBALL="$OUT/$NAME.tar.zst"
