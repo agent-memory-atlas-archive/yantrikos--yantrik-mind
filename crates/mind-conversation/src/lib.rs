@@ -7036,6 +7036,17 @@ impl ConversationEngine {
         self
     }
 
+    /// E.TOKEN1 (yantrik-os #411): give the desktop's tools this conversation's agent token. The
+    /// desktop's `yos-mcp` reads it from its environment, so the server is restarted when the token
+    /// changes and left alone when it has not. `Ok(false)` with no desktop server connected. Blocking.
+    pub fn set_desktop_agent_token(&self, token: &str) -> anyhow::Result<bool> {
+        let Some(hub) = self.mcp.as_ref() else { return Ok(false) };
+        if !hub.tools().iter().any(|t| t.server == desktop::DESKTOP_SERVER) {
+            return Ok(false);
+        }
+        hub.set_server_env(desktop::DESKTOP_SERVER, "YANTRIK_AGENT_TOKEN", token)
+    }
+
     /// Where `~` is, for a test that must not depend on the machine running it.
     #[cfg(test)]
     pub(crate) fn with_home_dir(mut self, home: Option<String>) -> Self {

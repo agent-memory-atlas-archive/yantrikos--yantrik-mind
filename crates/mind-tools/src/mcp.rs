@@ -207,6 +207,17 @@ fn tool_outcome(r: &Value) -> anyhow::Result<String> {
     Ok(text)
 }
 
+/// `cfg` with `key=value` in its environment, or `None` when it already is.
+fn with_env(cfg: &McpServerConfig, key: &str, value: &str) -> Option<McpServerConfig> {
+    if cfg.env.iter().any(|(k, v)| k == key && v == value) {
+        return None;
+    }
+    let mut next = cfg.clone();
+    next.env.retain(|(k, _)| k != key);
+    next.env.push((key.to_string(), value.to_string()));
+    Some(next)
+}
+
 /// A live connection to one MCP server (owns the subprocess + its stdio). All I/O is blocking.
 struct Conn {
     name: String,
@@ -389,6 +400,9 @@ impl Drop for Conn {
 /// (`call_blocking`, run via `spawn_blocking`).
 pub struct McpHub {
     servers: Mutex<HashMap<String, Arc<Mutex<Conn>>>>,
+    /// How each connected server was started, so one can be restarted with a changed environment
+    /// (`set_server_env`).
+    configs: Mutex<HashMap<String, McpServerConfig>>,
     tools: Mutex<Vec<McpTool>>,
     timeout: Duration,
     #[cfg(feature = "test-support")]
@@ -408,6 +422,7 @@ impl McpHub {
     pub fn new() -> Self {
         Self {
             servers: Mutex::new(HashMap::new()),
+            configs: Mutex::new(HashMap::new()),
             tools: Mutex::new(vec![]),
             timeout: Duration::from_secs(45),
             #[cfg(feature = "test-support")]
@@ -477,11 +492,46 @@ impl McpHub {
                         .lock()
                         .unwrap()
                         .insert(cfg.name.clone(), Arc::new(Mutex::new(conn)));
+                    self.configs.lock().unwrap().insert(cfg.name.clone(), cfg.clone());
                     eprintln!("[mcp] connected '{}' ({n} tools)", cfg.name);
                 }
                 Err(e) => eprintln!("[mcp] '{}' failed: {e}", cfg.name),
             }
         }
+    }
+
+    /// Restart one connected server with `key=value` in its environment, when that is not already
+    /// how it runs. Returns whether it restarted.
+    ///
+    /// yantrik-os #411: the desktop's `yos-mcp` reads `YANTRIK_AGENT_TOKEN` from its environment,
+    /// which is fixed at spawn, and the token belongs to a conversation -- so a server started once
+    /// at boot carries none, and a mind running under its own account is refused every act. A call
+    /// already in flight finishes on the old connection; the next one uses the new. Blocking (it
+    /// spawns and handshakes), so async callers run it with `spawn_blocking`.
+    pub fn set_server_env(&self, server: &str, key: &str, value: &str) -> anyhow::Result<bool> {
+        let current = self
+            .configs
+            .lock()
+            .unwrap()
+            .get(server)
+            .cloned()
+            .ok_or_else(|| anyhow::anyhow!("no MCP server named '{server}' is connected"))?;
+        let Some(next) = with_env(&current, key, value) else {
+            return Ok(false);
+        };
+        let conn = Conn::connect(&next, self.timeout)?;
+        let fresh = conn.tools.clone();
+        self.servers
+            .lock()
+            .unwrap()
+            .insert(server.to_string(), Arc::new(Mutex::new(conn)));
+        {
+            let mut tools = self.tools.lock().unwrap();
+            tools.retain(|t| t.server != server);
+            tools.extend(fresh);
+        }
+        self.configs.lock().unwrap().insert(server.to_string(), next);
+        Ok(true)
     }
 
     /// Every discovered tool across all connected servers.
@@ -654,5 +704,52 @@ mod tests {
             input_schema: json!({}),
         };
         assert_eq!(t.qualified(), "mcp.github.create_issue");
+    }
+}
+
+#[cfg(test)]
+mod env_restart_tests {
+    use super::*;
+
+    /// A minimal MCP server whose one tool reports the YANTRIK_AGENT_TOKEN it was started with.
+    const SERVER: &str = r#"
+import json, os, sys
+for line in sys.stdin:
+    m = json.loads(line)
+    if "id" not in m:
+        continue
+    if m["method"] == "initialize":
+        r = {"protocolVersion": "2024-11-05", "capabilities": {}, "serverInfo": {"name": "t", "version": "0"}}
+    elif m["method"] == "tools/list":
+        r = {"tools": [{"name": "whoami", "description": "the token", "inputSchema": {"type": "object"}}]}
+    else:
+        r = {"content": [{"type": "text", "text": os.environ.get("YANTRIK_AGENT_TOKEN", "none")}]}
+    sys.stdout.write(json.dumps({"jsonrpc": "2.0", "id": m["id"], "result": r}) + "\n")
+    sys.stdout.flush()
+"#;
+
+    /// yantrik-os #411: the desktop server is restarted with the conversation's token, once per
+    /// change -- measured on a real child process, not a fake.
+    #[test]
+    fn a_server_restarts_with_the_token_it_is_given() {
+        let script = std::env::temp_dir().join(format!("ym-mcp-token-{}.py", std::process::id()));
+        std::fs::write(&script, SERVER).unwrap();
+        let python = if cfg!(windows) { "python" } else { "python3" };
+        let hub = McpHub::new();
+        hub.connect_all(&[McpServerConfig {
+            name: "desk".into(),
+            command: python.into(),
+            args: vec![script.to_string_lossy().into_owned()],
+            env: vec![],
+        }]);
+        assert_eq!(hub.call_blocking("mcp.desk.whoami", &json!({})).unwrap(), "none", "started with no token");
+        assert!(hub.set_server_env("desk", "YANTRIK_AGENT_TOKEN", "tok-1").unwrap(), "a new token restarts it");
+        assert_eq!(hub.call_blocking("mcp.desk.whoami", &json!({})).unwrap(), "tok-1");
+        assert!(!hub.set_server_env("desk", "YANTRIK_AGENT_TOKEN", "tok-1").unwrap(), "the same token does not");
+        assert!(hub.set_server_env("desk", "YANTRIK_AGENT_TOKEN", "tok-2").unwrap());
+        assert_eq!(hub.call_blocking("mcp.desk.whoami", &json!({})).unwrap(), "tok-2");
+        assert_eq!(hub.tools().iter().filter(|t| t.server == "desk").count(), 1, "its tools are not listed twice");
+        assert!(hub.set_server_env("elsewhere", "YANTRIK_AGENT_TOKEN", "x").is_err(), "an unknown server is an error");
+        let _ = std::fs::remove_file(&script);
     }
 }

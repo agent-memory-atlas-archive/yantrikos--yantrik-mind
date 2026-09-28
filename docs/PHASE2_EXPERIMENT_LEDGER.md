@@ -10009,3 +10009,28 @@ The EACCES case is wrong today too, for any unreadable path.
   - "unknown counted as missing", which survived until the NUL-path case was added.
 - Full suite 2098 passed, 0 failed.
 - Tested from #411's agreed shape; to be replaced by a real capture when a build sends `machine.home`.
+
+## E.TOKEN1 — PREREG: the desktop's yos-mcp carries the conversation's agent token (for yantrik-os #411 phase B)
+
+**Phase B's rule:** a caller running as `yantrik-mind` may `app.act` only as a live attached agent, identified by the `agent_token` that yos-mcp takes from `YANTRIK_AGENT_TOKEN`. A missing, made-up or stale token is refused with "MIND: … Nothing was run."
+
+**Today the Mind would be refused on every act:**
+- It keeps only `session` from the harness, and never reads the `agent_token` that every poll'd turn carries (a per-conversation 128-bit token).
+- Its `yos-mcp` is spawned at engine start-up, before the harness attaches, so it has no `YANTRIK_AGENT_TOKEN` at all.
+- yos-mcp reads the token only from its environment and drops any `agent_token` passed as a call argument.
+
+**E.TOKEN1:**
+- The MCP hub remembers each server's config and can restart one server with one environment variable changed (`set_server_env`). It does nothing when the value is already the one set.
+- Each harness turn hands its `agent_token` to the desktop server before thinking, off the async runtime.
+- The token goes only into the child's environment. It is never logged and never shown to the model.
+
+**Kill criteria:**
+- A real child process started through the hub reports the token it was given.
+- A second token restarts it, and the child then reports the new one.
+- Setting the same token again does not restart it.
+- An unknown server is an error, not a silent no-op.
+
+**E.TOKEN1 built:**
+- The hub gains `with_env` and `set_server_env`. The engine gains `set_desktop_agent_token` (it does nothing without a connected desktop server). The harness applies each turn's `agent_token` before thinking.
+- The test runs a real Python MCP server (reporting its `YANTRIK_AGENT_TOKEN`) through the hub: it reports none, then tok-1, then no restart for the same token, then tok-2. Tools are not duplicated, and an unknown server is an error.
+- The harness call site is unix-only and verified live: the yos-mcp child's environment carries the token after a turn (its length only, never its value).

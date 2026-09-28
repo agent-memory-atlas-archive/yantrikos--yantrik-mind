@@ -409,6 +409,17 @@ async fn serve(
         let answer = {
             let mem = mem.clone();
             let conv = conv.clone();
+            // E.TOKEN1 (yantrik-os #411): the desktop's tools act for this conversation's agent.
+            // The token goes only into yos-mcp's environment -- never a log line, never the model.
+            if let Some(token) = turn["agent_token"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
+                let (c, token) = (conv.clone(), token.to_string());
+                match tokio::task::spawn_blocking(move || c.set_desktop_agent_token(&token)).await {
+                    Ok(Ok(true)) => eprintln!("[harness] turn {turn_id}: the desktop's tools now carry this conversation's agent token"),
+                    Ok(Ok(false)) => {}
+                    Ok(Err(e)) => eprintln!("[harness] turn {turn_id}: could not hand the desktop's tools the agent token: {e}"),
+                    Err(e) => eprintln!("[harness] turn {turn_id}: agent-token hand-off panicked: {e}"),
+                }
+            }
             let from_context = turn["context"].as_str().and_then(handover_from_context);
             // E.HOME1: the person's home as the desktop reports it (#411: not this process's $HOME).
             let home = turn["context"].as_str().and_then(machine_home);
