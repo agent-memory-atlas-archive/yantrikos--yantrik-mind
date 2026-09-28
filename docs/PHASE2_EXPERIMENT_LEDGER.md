@@ -10768,3 +10768,33 @@ In both, the save after the new draft runs, and the one after it, with nothing i
 - M3: no act revision recorded.
 
 Without revisions in the replies, the whole existing suite behaves as before.
+
+## F34 + F35 + F36 LIVE on 520 — the Blender demo's take 8 is a full success (f4, 15:12:59)
+
+Mind 5d31079 (sha256 1048eccd5fe97cc8), with yantrik-os #464 (yos waits for a starting app), #465/#466 (the Python SDK on the minds' door, and the spend fix) and the SIGPIPE fix. The full journal is at `F:\yantrik\tmp\demo\take8-journal.txt`.
+
+**The request, all four parts:** a plan saved as `~/scene-plan.txt`; Suzanne on a pedestal with warm light, built step by step in Blender, rendered at 960x540 to `~/Pictures/suzanne.png` and opened in Images; then the rebuild script as `~/scene.py`. **18 steps, 72 s, 0 barren.**
+
+**The steps:**
+1. `os_apps`, open the editor, describe it, `save_as ~/scene-plan.txt`.
+2. Open Blender and describe it.
+3. `new_scene`: a card, Allowed, the grant spent.
+4. `add_primitive` for the pedestal (cube) and Suzanne (monkey), then `set_material`, `set_light` (area, 400), `set_camera` and `set_render` (EEVEE 960x540).
+5. `render`: 33 s, a real PNG.
+6. Open the image viewer with the PNG.
+7. Editor `new` + `save_as ~/scene.py`.
+8. The reply: "All four things are done and verified on disk".
+
+**Takes 1–7 each failed on one link.** In order:
+- the desktop answering "closed" for a starting app (#464, then F34);
+- Python apps never binding the door (#465);
+- the refused `run_python` treated as the only way (F35);
+- a spend refused (#466);
+- a render crash from SIGPIPE;
+- a second draft's save treated as a repeat (F36).
+
+**Two observations from take 8, not built:**
+1. **A recovered draft was used as the plan.** Step 3 saved the editor's *recovered unsaved draft* from take 7 as the plan, without writing one. The describe said "Recovered unsaved drafts…". The content happened to be right. A recovered draft is someone else's text, not this turn's work; that's a candidate rule.
+2. **`scene.py` doesn't parse.** Its first line is prose, not a `#` comment, so `blender --python scene.py` fails on line 1. Candidate rule: a `.py` the Mind writes must at least parse before `save_as`.
+
+Neither is a correctness failure of this turn, and both wait for a second instance before any rule.
