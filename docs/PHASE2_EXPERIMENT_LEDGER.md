@@ -10321,3 +10321,56 @@ The device store and console token stay in the database's folder first, exactly 
 - No process-private folder was created.
 
 **Not exercised:** the `provider_usage.json` rollup. Its newest entry is dated 2026-09-07, so no route on staging has written it for three weeks, before and after this change.
+
+## E.GRANT1 — PREREG: another mind reads this person's memory as an Agent, never as the operator
+
+yantrik-os #447, Phase 1 item (3), the kernel half. Design: #447 comment 5874351480. Jev and GPT-6 Sol backed it, and GPT found one hole to close.
+
+**What the code says today:**
+- The memory server runs every tool as `operator_audit()`, the Audit lane. That lane is unrestricted, so any token holder sees every class, Credentials included.
+- A same-owner `Conversation` footing also opens every class.
+- A stored `PurposeGrant` with `activity: None` covers **every** lane.
+
+**E.GRANT1:**
+- **A new lane, `Activity::Agent`:** another mind, over MCP. It sees Ordinary only by default.
+- **A new footing, `AccessContext::Agent`,** built only by `AgentFooting::from_validation(answer, own_person_uid)` from the pinned `memory.validate` answer (`v: 1`, same `person_uid`). Its scope is the person (`Private(PRIMARY)`). Its only sensitive classes are Health (`recall_health`) and Finance (`recall_finance`). Unknown grant names are ignored, and Credentials can't be represented.
+- **At the wall, for Agent:**
+  - Credentials are refused unconditionally, whatever is granted.
+  - **No stored grant covers an Agent purpose** (`PurposeGrant::covers` returns false), so the lens's `granted` for Agent comes only from the footing's validated classes.
+- Receipts name the reader as `mind:<id>`.
+
+**Kill criteria**, on real walls over a real store:
+- An Agent footing with no classes sees an Ordinary belief and not Health, Finance or Credentials ones.
+- With `recall_health` it sees Health, but not Finance or Credentials.
+- A grant list naming `recall_credentials`, or a stored purpose-wide grant, opens nothing.
+- `explain`, `conflicts` and `reflect` under the Agent footing hide a Health belief without the grant.
+- An answer for another `person_uid`, or with `v` other than 1, yields no footing.
+
+**E.GRANT1 (kernel half) — RESULT: built, and every kill criterion held.** Full suite: 2122 passed, 0 failed.
+
+**Tests on real walls over a real store** (`another_mind_reads_only_what_its_credential_opens`). Each fact was stored with its class set explicitly.
+- `recall_ordinary` sees only the Ordinary fact.
+- Adding `recall_health` opens Health, and not Finance or Credentials.
+- A grant list also naming `recall_finance` and `recall_credentials` opens Finance, **and never Credentials**.
+- After a stored purpose-wide grant *and* a stored Credentials grant for the Agent lane, `recall_ordinary` still sees only Ordinary.
+- `explain` hides the Health belief without its grant and shows it with it.
+- `reflect` doesn't leak it.
+- The receipt label is `mind:hermes`.
+
+**`only_a_validated_answer_for_this_person_is_a_footing`:** another `person_uid`, `v: 2`, a blank mind, and `null` are each no footing. An unknown grant name is returned for logging and opens nothing.
+
+**Kernel test:**
+- `purpose_allows(Agent, Credentials, granted=true)` is false.
+- A validated class opens Health.
+- Neither a purpose-wide grant nor an Agent-lane grant `covers` an Agent read.
+
+**Mutants, each watched to fail** (restores touched this time):
+- M1: a stored grant covers Agent.
+- M2: Agent may read Credentials.
+- M3: the lens asks the ledger for Agent.
+- M4: another person's answer accepted.
+- M5: Health opened without its grant.
+
+**M1 and M2 are caught only by the kernel test.** On the store, the lens's own Agent branch already stops them. They are the second layer, which is what GPT asked for: the rule holds at the kernel even for a caller that doesn't go through the lens.
+
+**Not yet reachable.** The memory server still runs as `operator_audit()` until the door client exists. That client, the per-tool gate and forget-own come next, after the real 520 capture of `memory_validate`.

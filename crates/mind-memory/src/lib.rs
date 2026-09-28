@@ -3847,6 +3847,8 @@ fn list_tombstones(db: &YantrikDB) -> std::result::Result<Vec<(String, String, u
 /// Grants can open the operator's background lanes; they never widen a
 /// principal's viewing scope — the scope wall runs first and stays supreme.
 struct PurposeLens {
+    /// E.GRANT1: the classes a validated agent footing opens; empty otherwise.
+    classes: Vec<mind_types::Sensitivity>,
     purpose: mind_types::Purpose,
     scopes: std::collections::HashMap<String, String>,
     sensitivity: std::collections::HashMap<String, String>,
@@ -3863,10 +3865,15 @@ impl PurposeLens {
             || mind_types::Sensitivity::classify(proposition),
             |s| mind_types::Sensitivity::parse(s),
         );
-        let granted = self
-            .grants
-            .iter()
-            .any(|g| g.covers(&self.purpose, &owner, sens, self.now_ms));
+        // E.GRANT1: another mind is granted a class only by its own validated footing -- never by
+        // the stored ledger (which `covers` also refuses for Agent, belt and braces).
+        let granted = if self.purpose.activity == mind_types::Activity::Agent {
+            self.classes.contains(&sens)
+        } else {
+            self.grants
+                .iter()
+                .any(|g| g.covers(&self.purpose, &owner, sens, self.now_ms))
+        };
         mind_types::purpose_allows(&self.purpose, &owner, sens, granted)
     }
 }
@@ -5498,6 +5505,7 @@ impl MemoryHandle {
             .await
             .unwrap_or_default();
         Some(PurposeLens {
+            classes: ctx.validated_classes().to_vec(),
             purpose,
             scopes,
             sensitivity,
@@ -9181,6 +9189,93 @@ MIIEvg==" });
             "formatting variant merges, contradiction (1.70 vs 1.96) stays separate: {:?}",
             rust.iter().map(|r| &r.item.text).collect::<Vec<_>>()
         );
+    }
+
+    /// E.GRANT1: another mind's footing, from the pinned `memory.validate` answer.
+    fn agent_ctx(grants: &[&str]) -> mind_types::AccessContext {
+        let answer = serde_json::json!({"v": 1, "person_uid": 1000, "mind": "hermes", "attach": "hermes:c1@s1", "grants": grants, "valid_for_ms": 2000});
+        mind_types::AccessContext::Agent(mind_types::AgentFooting::from_validation(&answer, 1000).unwrap().0)
+    }
+
+    /// E.GRANT1 on real walls: another mind sees the person's ordinary beliefs; Health and Finance
+    /// only by its own grants; Credentials never -- not by a grant name, not by a stored grant; and
+    /// explain/reflect do not leak what recall hides.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn another_mind_reads_only_what_its_credential_opens() {
+        use mind_types::{Scope, Sensitivity};
+        let mem = MemoryHandle::spawn(":memory:", 8).unwrap();
+        let facts = [
+            ("The recycling goes out on Thursday", None),
+            ("The dentist appointment is on Friday", Some(Sensitivity::Health)),
+            ("The rent is paid on the first", Some(Sensitivity::Finance)),
+            ("The side gate opens with seven", Some(Sensitivity::Credentials)),
+        ];
+        for (s, class) in facts {
+            let a = BeliefAssertion { statement: s.into(), polarity: 1.0, weight: 2.0, source_event: None, provenance: "told".into() };
+            mem.remember_as_belief_scoped(a, Scope::primary()).await.unwrap();
+            if let Some(c) = class {
+                mem.set_belief_sensitivity(s, c).await.unwrap();
+            }
+        }
+        let seen = |ctx: mind_types::AccessContext| {
+            let mem = mem.clone();
+            async move {
+                let mut v: Vec<String> = mem
+                    .beliefs_matching_n("Thursday dentist rent gate", 20, &ctx)
+                    .await
+                    .unwrap()
+                    .into_iter()
+                    .map(|b| b.statement.split_whitespace().nth(1).unwrap_or("").to_string())
+                    .collect();
+                v.sort();
+                v
+            }
+        };
+        assert_eq!(seen(agent_ctx(&["recall_ordinary"])).await, vec!["recycling"]);
+        assert_eq!(seen(agent_ctx(&["recall_ordinary", "recall_health"])).await, vec!["dentist", "recycling"]);
+        assert_eq!(
+            seen(agent_ctx(&["recall_ordinary", "recall_health", "recall_finance", "recall_credentials"])).await,
+            vec!["dentist", "recycling", "rent"],
+            "a credential was opened by a grant name"
+        );
+        // A stored purpose-wide grant -- and one naming Credentials for the Agent lane -- opens nothing.
+        for (class, activity) in [(None, None), (Some(Sensitivity::Credentials), Some(mind_types::Activity::Agent))] {
+            mem.grant_purpose(mind_types::PurposeGrantSpec {
+                owner: mind_types::Subject::primary(),
+                beneficiary: mind_types::Subject::primary(),
+                class,
+                activity,
+                expires_ms: u64::MAX,
+                note: "test".into(),
+            })
+            .await
+            .unwrap();
+        }
+        assert_eq!(seen(agent_ctx(&["recall_ordinary"])).await, vec!["recycling"], "a stored grant spoke for another mind");
+        // The nested reads hide what recall hides.
+        assert!(mem.explain_belief("The dentist appointment is on Friday", &agent_ctx(&["recall_ordinary"])).await.unwrap().is_none());
+        assert!(mem.explain_belief("The dentist appointment is on Friday", &agent_ctx(&["recall_ordinary", "recall_health"])).await.unwrap().is_some());
+        let r = mem.reflect("dentist appointment Friday", &agent_ctx(&["recall_ordinary"])).await.unwrap();
+        assert!(!r.beliefs.iter().any(|b| b.statement.contains("dentist")), "reflect leaked a Health belief");
+        assert_eq!(agent_ctx(&[]).principal_label(), "mind:hermes");
+    }
+
+    /// E.GRANT1: only a version-1 answer for THIS person, naming a mind, is a footing.
+    #[test]
+    fn only_a_validated_answer_for_this_person_is_a_footing() {
+        use mind_types::AgentFooting;
+        let ok = serde_json::json!({"v": 1, "person_uid": 1000, "mind": "hermes", "attach": "h/c", "grants": ["recall_ordinary", "fly"]});
+        let (f, unknown) = AgentFooting::from_validation(&ok, 1000).unwrap();
+        assert!(f.has("recall_ordinary") && !f.has("remember"));
+        assert_eq!(unknown, vec!["fly".to_string()]);
+        assert!(AgentFooting::from_validation(&ok, 1001).is_err(), "another person's credential");
+        let mut v2 = ok.clone();
+        v2["v"] = serde_json::json!(2);
+        assert!(AgentFooting::from_validation(&v2, 1000).is_err());
+        let mut nameless = ok.clone();
+        nameless["mind"] = serde_json::json!("  ");
+        assert!(AgentFooting::from_validation(&nameless, 1000).is_err());
+        assert!(AgentFooting::from_validation(&serde_json::Value::Null, 1000).is_err(), "a null answer is no footing");
     }
 
     /// E.MEMSCOPE1: saying the same words later -- as another person, as the household, or with

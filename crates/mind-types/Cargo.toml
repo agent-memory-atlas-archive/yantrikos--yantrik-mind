@@ -7,8 +7,6 @@ edition.workspace = true
 serde = { workspace = true }
 async-trait = { workspace = true }
 thiserror = { workspace = true }
-
-[dev-dependencies]
-# Test-only: the TaskBasis round-trip assertion, so a stored basis cannot decay into a string
-# nobody parses (E.P5b).
+# E.GRANT1: an agent footing is read from the desktop's memory.validate answer (JSON). Also the
+# TaskBasis round-trip test (E.P5b).
 serde_json = { workspace = true }

@@ -290,6 +290,78 @@ pub enum AccessContext {
         scope: Scope,
         purpose: crate::purpose::Purpose,
     },
+    /// E.GRANT1: another mind, on a credential the desktop validated. Sees what the person sees
+    /// (`Private(PRIMARY)` -- a per-person Mind's store is one person's), through the Agent lane.
+    Agent(AgentFooting),
+}
+
+/// E.GRANT1: the footing of another mind reading this person's memory. Its fields are private and
+/// its only constructor reads the desktop's validation answer, so the sensitive classes it opens can
+/// come from nowhere else.
+#[derive(Debug, Clone)]
+pub struct AgentFooting {
+    mind: String,
+    attach: String,
+    grants: std::collections::BTreeSet<String>,
+    classes: Vec<crate::purpose::Sensitivity>,
+    purpose: crate::purpose::Purpose,
+}
+
+/// The grant names this Mind understands (#447, pinned with #448). Anything else is ignored.
+pub const AGENT_GRANTS: &[&str] = &["recall_ordinary", "remember", "believe", "recall_health", "recall_finance", "household"];
+
+impl AgentFooting {
+    /// From `memory.validate`'s answer: exactly `{"v":1,"person_uid","mind","attach","grants":[..]}`
+    /// for THIS Mind's person. Anything else -- another person, another version, no mind -- is no
+    /// footing at all. Unknown grant names are returned so the caller can log them; they open nothing.
+    pub fn from_validation(
+        answer: &serde_json::Value,
+        own_person_uid: u32,
+    ) -> std::result::Result<(AgentFooting, Vec<String>), String> {
+        if answer.get("v").and_then(|v| v.as_u64()) != Some(1) {
+            return Err("not a version-1 validation answer".into());
+        }
+        if answer.get("person_uid").and_then(|v| v.as_u64()) != Some(u64::from(own_person_uid)) {
+            return Err("the credential belongs to another person".into());
+        }
+        let mind = answer.get("mind").and_then(|v| v.as_str()).map(str::trim).filter(|m| !m.is_empty());
+        let Some(mind) = mind else {
+            return Err("the answer names no mind".into());
+        };
+        let attach = answer.get("attach").and_then(|v| v.as_str()).unwrap_or_default().to_string();
+        let (mut grants, mut unknown) = (std::collections::BTreeSet::new(), Vec::new());
+        for g in answer.get("grants").and_then(|v| v.as_array()).into_iter().flatten() {
+            match g.as_str() {
+                Some(name) if AGENT_GRANTS.contains(&name) => {
+                    grants.insert(name.to_string());
+                }
+                Some(name) => unknown.push(name.to_string()),
+                None => unknown.push(g.to_string()),
+            }
+        }
+        let mut classes = Vec::new();
+        if grants.contains("recall_health") {
+            classes.push(crate::purpose::Sensitivity::Health);
+        }
+        if grants.contains("recall_finance") {
+            classes.push(crate::purpose::Sensitivity::Finance);
+        }
+        let purpose = crate::purpose::Purpose::new(crate::purpose::Subject::primary(), crate::purpose::Activity::Agent);
+        Ok((AgentFooting { mind: mind.to_string(), attach, grants, classes, purpose }, unknown))
+    }
+    /// The mind this footing speaks for (a stable id).
+    pub fn mind(&self) -> &str {
+        &self.mind
+    }
+    /// The attach it came from -- an opaque id (`<harness>:<conversation>@s<n>` on #448), kept as
+    /// given, for audit and revocation.
+    pub fn attach(&self) -> &str {
+        &self.attach
+    }
+    /// Does this footing hold `grant`?
+    pub fn has(&self, grant: &str) -> bool {
+        self.grants.contains(grant)
+    }
 }
 
 impl AccessContext {
@@ -314,6 +386,15 @@ impl AccessContext {
         match self {
             AccessContext::Operator { .. } => None,
             AccessContext::Principal { scope, .. } => Some(scope.clone()),
+            AccessContext::Agent(_) => Some(Scope::primary()),
+        }
+    }
+    /// E.GRANT1: the sensitive classes a validated agent footing opens (Health, Finance -- never
+    /// Credentials). Empty for every other footing.
+    pub fn validated_classes(&self) -> &[crate::purpose::Sensitivity] {
+        match self {
+            AccessContext::Agent(f) => &f.classes,
+            _ => &[],
         }
     }
     /// True when this context is the privileged, unfiltered operator.
@@ -326,6 +407,7 @@ impl AccessContext {
             AccessContext::Operator { purpose } | AccessContext::Principal { purpose, .. } => {
                 purpose
             }
+            AccessContext::Agent(f) => &f.purpose,
         }
     }
     /// A short label for sensitive-read receipts.
@@ -340,6 +422,7 @@ impl AccessContext {
                 scope: Scope::Private(o),
                 ..
             } => format!("private:{o}"),
+            AccessContext::Agent(f) => format!("mind:{}", f.mind),
         }
     }
 }

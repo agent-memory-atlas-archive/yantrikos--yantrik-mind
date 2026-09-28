@@ -28,7 +28,7 @@ pub use error::{AuthError, MemoryError, MindError, Result};
 pub use event::{Event, EventBody, EventSource};
 pub use harm::{Decision, HarmGate};
 pub use memory::{
-    AccessContext, Belief, BeliefAssertion, BeliefStatus, Contradiction, Evidence,
+    AccessContext, AgentFooting, Belief, BeliefAssertion, BeliefStatus, Contradiction, Evidence,
     MemoryCurationBaseline, MemoryFacade, MemoryItem, MemoryKind, NamespaceBacklog, RecallQuery,
     Recalled, Reflection, Scope, Skill, Tension, TensionKind, UncertaintyReason, WorkingSet,
     PRIMARY,

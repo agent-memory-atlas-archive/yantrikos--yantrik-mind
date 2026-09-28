@@ -105,6 +105,10 @@ pub enum Activity {
     /// Substrate hygiene: consolidation, dedup, migration. Reads the store to
     /// maintain it, not to use facts for a beneficiary.
     Maintenance,
+    /// E.GRANT1: ANOTHER mind reading this person's memory over MCP, on a credential the desktop
+    /// validated. Ordinary by default; Health/Finance only by that credential's own grants (never a
+    /// stored grant); Credentials never.
+    Agent,
 }
 
 impl Activity {
@@ -119,6 +123,7 @@ impl Activity {
             Activity::Recipe => "recipe",
             Activity::Audit => "audit",
             Activity::Maintenance => "maintenance",
+            Activity::Agent => "agent",
         }
     }
     pub fn parse(tag: &str) -> Option<Activity> {
@@ -132,6 +137,7 @@ impl Activity {
             "recipe" => Activity::Recipe,
             "audit" => Activity::Audit,
             "maintenance" => Activity::Maintenance,
+            "agent" => Activity::Agent,
             _ => return None,
         })
     }
@@ -364,6 +370,12 @@ impl PurposeGrant {
         sensitivity: Sensitivity,
         now_ms: u64,
     ) -> bool {
+        // E.GRANT1: no stored grant speaks for another mind. A purpose-wide grant (activity None)
+        // would otherwise open Health/Finance for every credential at once; an Agent read opens a
+        // class only through its own validated footing.
+        if purpose.activity == Activity::Agent {
+            return false;
+        }
         !self.revoked
             && now_ms < self.expires_ms
             && self.owner == *owner
@@ -391,6 +403,10 @@ pub fn purpose_allows(
     if purpose.is_unrestricted_lane() {
         return true; // the operator's own audit + hygiene lanes (always receipted)
     }
+    // E.GRANT1: another mind never reads a credential, whatever it was granted.
+    if purpose.activity == Activity::Agent && sensitivity == Sensitivity::Credentials {
+        return false;
+    }
     if granted {
         return true;
     }
@@ -407,6 +423,33 @@ mod tests {
 
     fn member(m: &str) -> Subject {
         Subject::Member(m.to_string())
+    }
+
+    /// E.GRANT1: another mind never reads a credential, even when told it was granted; and no
+    /// stored grant -- purpose-wide or naming the Agent lane -- speaks for another mind.
+    #[test]
+    fn another_mind_is_never_opened_by_the_ledger_and_never_reads_a_credential() {
+        let agent = Purpose::new(Subject::primary(), Activity::Agent);
+        let me = Subject::primary();
+        assert!(!purpose_allows(&agent, &me, Sensitivity::Credentials, true));
+        assert!(purpose_allows(&agent, &me, Sensitivity::Health, true), "a validated class opens Health");
+        assert!(!purpose_allows(&agent, &me, Sensitivity::Health, false));
+        assert!(purpose_allows(&agent, &me, Sensitivity::Ordinary, false));
+        for (class, activity) in [(None, None), (Some(Sensitivity::Health), Some(Activity::Agent))] {
+            let g = PurposeGrant {
+                id: 1,
+                owner: me.clone(),
+                beneficiary: me.clone(),
+                class,
+                activity,
+                expires_ms: u64::MAX,
+                revoked: false,
+                note: String::new(),
+                created_ms: 0,
+            };
+            assert!(!g.covers(&agent, &me, Sensitivity::Health, 1), "a stored grant covered an Agent read");
+        }
+        assert_eq!(Activity::parse("agent"), Some(Activity::Agent));
     }
 
     #[test]
