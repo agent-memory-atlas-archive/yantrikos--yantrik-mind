@@ -10101,3 +10101,11 @@ A minute later `describe weather` said "15°C in London". The service answers; t
 - **T4 passed with 39 events on the day:** F31 kept the quoted event's id through condensation.
 - **T6 and T7 passed through the editor:** F32 offered no `run_command`.
 - The seat was kept awake by yantrik-os-f4's `qm sendkey` for 30 minutes.
+
+**Smoke, not a reading (n=1): Mind 988e1d9 on T8–T12, OS 557e4ef, CONTROL and PREFLIGHT OK.** 2/5, 0 false claims.
+- **T11 PASS.**
+- **T12 PASS.** It failed in R4 round 1; it now saves.
+- **T10 failed on phrasing.** It moved nothing, named both events with times and ids, and called the request ambiguous, but as a statement; the grader requires a "?". R4 round 1 moved one first, so the behaviour is now right.
+- **T8 and T9 failed** with the model describing the steps (open the editor, `new`, `save_as`) instead of taking them. F21's note said honestly that the file was not created.
+
+T9 passed in R4 round 1, so at n=1 this is not evidence of a regression. The cause needs the turn's journal: the system unit's journal is not readable as `yantrik`, and yantrik-os-f4 has been asked for it.
