@@ -10158,3 +10158,9 @@ F17 already gives one more step at this exit when a document is unsaved. F21 kno
 - An engine field `mind_account` (from `YANTRIK_MIND_RUN` at start). In that mode `person_home` is only the desktop's word, and `missing_goal` requires that home to be visible and the path to lie inside it.
 - A loop test with three cases (untold, told but hidden, told and visible).
 - Two mutants, both watched to fail. Full suite 2108 passed, 0 failed.
+
+**E.HOME2 live (823cf35 on 520):** the re-run of the ~/f33-check turn (turn 414) has no "still missing" line and no code-added note.
+
+**It is not a clean replay, through my test design.** I had deleted the test folder between the two turns of the same conversation. The Mind remembered its earlier save, found the folder gone, and asked what to do; that was honest. A clean replay needs a fresh conversation.
+
+**The arena waited 301 s:** the idle lock fired at about 07:45 while `ask()` was waiting, and wait_idle cannot see "idle" on a locked desktop. It was not a request card (my first guess was wrong). Reported to yantrik-os-f4.
