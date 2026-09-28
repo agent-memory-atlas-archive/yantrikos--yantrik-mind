@@ -17568,6 +17568,51 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
     }
 
+    /// E.CARDS1: every sent call opens a card and closes it with the loop's verdict; an unsent repeat
+    /// opens none; a credential in the args never reaches a card; a big text is a preview.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn every_sent_call_is_a_card() {
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<crate::CallEvent>();
+        let d = || Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "blender"}));
+        let prim = Step::Call(
+            "mcp.yantrik-os.os_act",
+            serde_json::json!({"app": "blender", "action": "add_primitive", "args": {"kind": "monkey", "name": "Suzanne sk-abcdefghijklmnop1234"}}),
+        );
+        const REFUSED: &str = include_str!("../fixtures/desktop/act_blender_run_python_refused_ac4473c9.txt");
+        let runpy = Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "blender", "action": "run_python", "args": {"code": "import bpy"}}));
+        // The same change again with a field more (F26): answered from the work log, never sent.
+        let again = Step::Call(
+            "mcp.yantrik-os.os_act",
+            serde_json::json!({"app": "blender", "action": "add_primitive", "args": {"kind": "monkey", "name": "Suzanne sk-abcdefghijklmnop1234", "scale": "1"}}),
+        );
+        let _ = crate::TURN_CALLS
+            .scope(tx, run_with("Put Suzanne in the scene", vec![d(), d(), prim, again, runpy], vec!["Blender \u{2014} 3 objects\nrevision: 1\n{}"; 6], vec!["Done \u{2014} Blender \u{2014} 4 objects", REFUSED]))
+            .await;
+        let mut events = Vec::new();
+        while let Ok(e) = rx.try_recv() {
+            events.push(e);
+        }
+        let starts: Vec<_> = events.iter().filter_map(|e| match e { crate::CallEvent::ToolStart { call, name, target, args } => Some((call.clone(), name.clone(), target.clone(), args.clone())), _ => None }).collect();
+        let ends: Vec<_> = events.iter().filter_map(|e| match e { crate::CallEvent::ToolEnd { call, ok, .. } => Some((call.clone(), *ok)), _ => None }).collect();
+        assert_eq!(starts.len(), ends.len(), "a card was opened and never closed: {events:?}");
+        assert!(starts.iter().zip(&ends).all(|(s, e)| s.0 == e.0), "start and end ids do not pair: {events:?}");
+        assert_eq!(starts.iter().filter(|s| s.1 == "describe").count(), 1, "the repeated describe was not sent, so it has no card: {events:?}");
+        let (_, _, target, args) = starts.iter().find(|s| s.1 == "blender.add_primitive").cloned().expect("no card for the act");
+        assert!(target.contains("monkey"), "{target}");
+        assert!(!args.to_string().contains("abcdefghijklmnop1234") && !target.contains("abcdefghijklmnop1234"), "a credential reached a card: {args} / {target}");
+        assert!(ends.iter().any(|(c, ok)| *ok && starts.iter().any(|s| &s.0 == c && s.1 == "blender.add_primitive")), "the act did not end ok");
+        assert_eq!(starts.iter().filter(|s| s.1 == "blender.add_primitive").count(), 1, "the unsent repeat of the change got a card: {events:?}");
+        assert!(
+            ends.iter().any(|(c, ok)| !*ok && starts.iter().any(|s| &s.0 == c && s.1 == "blender.run_python")),
+            "the refused call did not end as failed: {events:?}"
+        );
+        let big = crate::call_start(9, "mcp.yantrik-os.os_act", &serde_json::json!({"app": "editor", "action": "new", "args": {"text": "x".repeat(20_000)}}));
+        match big {
+            crate::CallEvent::ToolStart { args, .. } => assert_eq!(args["truncated"], true, "{args}"),
+            _ => unreachable!(),
+        }
+    }
+
     /// E.ARENA1-F36, take 7 (520, 14:55): a save after a new draft is a new save -- the editor moved
     /// in between -- and a further identical save with nothing in between is still a repeat.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

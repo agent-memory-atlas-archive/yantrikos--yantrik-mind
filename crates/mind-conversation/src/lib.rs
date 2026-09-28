@@ -1420,6 +1420,65 @@ tokio::task_local! {
     pub static TURN_PROGRESS: tokio::sync::mpsc::UnboundedSender<String>;
 }
 
+tokio::task_local! {
+    /// E.CARDS1: the current turn's tool calls, for a caller that draws them as cards (the desktop's
+    /// agents pane, via `harness.event`). Its own channel, not `TURN_PROGRESS`: the progress
+    /// channel's consumers print anything unmarked as a status line.
+    pub static TURN_CALLS: tokio::sync::mpsc::UnboundedSender<CallEvent>;
+}
+
+/// E.CARDS1: one tool call, in the shape the desktop's harness library sends (`tool_start` /
+/// `tool_end` under `kind`).
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum CallEvent {
+    ToolStart { call: String, name: String, target: String, args: serde_json::Value },
+    ToolEnd { call: String, ok: bool, summary: String },
+}
+
+/// The largest args a card carries whole; past it, a preview (the harness library's rule).
+const CARD_ARGS_BYTES: usize = 8000;
+
+fn emit_call(e: CallEvent) {
+    let _ = TURN_CALLS.try_with(|tx| {
+        let _ = tx.send(e);
+    });
+}
+
+/// Credentials masked in every string of a card's args -- the final-answer rule: the card is the
+/// person's, and their own data is theirs to see; a key is nobody's.
+fn card_args(v: &serde_json::Value) -> serde_json::Value {
+    match v {
+        serde_json::Value::String(s) => serde_json::Value::String(crate::redact::redact_answer(s)),
+        serde_json::Value::Array(a) => serde_json::Value::Array(a.iter().map(card_args).collect()),
+        serde_json::Value::Object(o) => serde_json::Value::Object(o.iter().map(|(k, v)| (k.clone(), card_args(v))).collect()),
+        other => other.clone(),
+    }
+}
+
+/// E.CARDS1: the card a sent call opens.
+pub(crate) fn call_start(step: usize, tool: &str, args: &serde_json::Value) -> CallEvent {
+    let (name, inner) = match desktop::act_target(tool, args) {
+        Some((app, action)) if tool == desktop::ACT => (format!("{app}.{action}"), args.get("args").cloned().unwrap_or_default()),
+        _ if tool == desktop::DESCRIBE => ("describe".to_string(), args.clone()),
+        _ => (tool.to_string(), args.clone()),
+    };
+    let target: String = crate::redact::redact_answer(&args_summary(&inner)).chars().take(160).collect();
+    let mut card = card_args(&inner);
+    let whole = card.to_string();
+    if whole.len() > CARD_ARGS_BYTES {
+        card = serde_json::json!({"truncated": true, "bytes": whole.len(), "preview": whole.chars().take(CARD_ARGS_BYTES).collect::<String>()});
+    }
+    CallEvent::ToolStart { call: format!("s{step}"), name, target, args: card }
+}
+
+/// E.CARDS1: how a sent call ended -- the loop's own verdict, and the reply's first line.
+pub(crate) fn call_end(step: usize, ran: bool, obs: &str) -> CallEvent {
+    let head = obs.lines().find(|l| !l.trim().is_empty()).unwrap_or("").trim();
+    let summary: String = crate::redact::redact_answer(head).chars().take(400).collect();
+    CallEvent::ToolEnd { call: format!("s{step}"), ok: ran, summary }
+}
+
 /// Emit a progress marker to the streaming caller, if any. Never blocks, never fails the turn:
 /// progress is decoration on the work, not a dependency of it.
 pub(crate) fn emit_progress(msg: &str) {
@@ -13681,6 +13740,10 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 }
             };
             let sent = not_sent.is_none();
+            // E.CARDS1: a card for every call that is really sent.
+            if sent {
+                emit_call(call_start(step, &tool, &args));
+            }
             let obs = match not_sent {
                 Some(note) => note,
                 None => self.run_agent_tool_as(&tool, &args, id).await,
@@ -13788,6 +13851,9 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             // world has changed (the loop's ordinary repeat nudge still meets an immediate retry).
             // E.ARENA1-F22: "nothing was run" is not a success, however the classifier scored it.
             let ran = outcome == crate::tool_outcome::Outcome::Ok && !desktop::nothing_was_run(&obs);
+            if sent {
+                emit_call(call_end(step, ran, &obs));
+            }
             if desktop::retry_after_failure(&tool, ran) {
                 done_calls.remove(&call_sig);
             }

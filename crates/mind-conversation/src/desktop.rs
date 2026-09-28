@@ -379,7 +379,7 @@ fn asks_first(grade: &str) -> bool {
 }
 
 /// The `app` and `action` of a desktop action call.
-fn act_target(tool: &str, args: &serde_json::Value) -> Option<(String, String)> {
+pub(crate) fn act_target(tool: &str, args: &serde_json::Value) -> Option<(String, String)> {
     if tool != ACT {
         return None;
     }

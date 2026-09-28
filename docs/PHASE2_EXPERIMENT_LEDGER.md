@@ -10817,3 +10817,47 @@ So a rule survives verbatim only if (2) extracted it **and** (3) admits it. Othe
 - (d) behaviour: a probe request that the rule should change.
 
 **Decision rule, fixed now:** if every rule stays in (a) and (c) at K = 5 and (d) holds, nothing is built. If (a) or (c) drop rules, the fix is typed routing: rules and constraints go to a verbatim, unbudgeted "standing rules" channel, and episodes go to the summary. Rebuilding (1) or raising the 220-word cap doesn't count as a fix.
+
+## E.CARDS1 — PREREG: the Mind's tool calls show as cards on the desktop
+
+**Seen by yantrik-os-f4 on 520:** the new Yantrik terminal and the Agents pane draw a live card per tool call from the agents store. Hermes shows 110 calls; Yantrik Mind shows 0, because its harness streams text and emits no `harness.event`.
+
+**Who reads a card, answered by f4 from the code:** cards sent this way are stored as harness provenance. `describe shell` counts them but never emits their args or paths. `read_agent` is the Mind itself or the person. So the args reach only the person.
+
+**E.CARDS1:**
+- For every call the loop actually **sends**, one `tool_start {call, name, target, args}` and one `tool_end {call, ok, summary}`, as `harness.event`, in the shape of the harness library (`harnesses/lib/yantrik_harness.py`).
+- **name:** `<app>.<action>` for a desktop act, `describe` for a describe, the tool name otherwise.
+- **args:** with credential values masked (the final-answer rule: the person sees their own data), and cut to a preview past 8 KB.
+- **ok:** the loop's own verdict (`ran`: Ok and not "nothing was run").
+- **summary:** the reply's first line, masked.
+- The events ride a separate per-turn channel (`TURN_CALLS`). The progress channel's consumers (web, Telegram) would otherwise print them as status lines.
+- The harness forwards them in order, and finishes before `harness.complete`. A desktop that answers "unknown method" gets no more for that turn.
+- A call that is not sent (answered from the work log, or already answered) gets no card.
+
+**Kill criteria:**
+- Two sent calls give two start/end pairs with matching ids and the right `ok`.
+- An unsent repeat gives no card.
+- A credential in the args does not appear.
+- 20 KB of text is a preview.
+- The `harness.event` params are `{session, turn_id, event}` with `kind` set.
+
+**E.CARDS1 — RESULT: built, and every kill criterion held.** Full suite locally: 2144 passed, 0 failed. On Linux (staging): mind-core 123/123 and the card test.
+
+**`every_sent_call_is_a_card`** (loop):
+- Every sent call has a start and end with paired ids.
+- The immediately repeated describe (turned away before dispatch) and the same change again (F26, answered from the work log) get no card.
+- The act's card is `blender.add_primitive` with target "monkey…", and a `sk-…` credential appears in neither args nor target.
+- The refused `run_python` ends `ok: false`, and the act ends `ok: true`.
+- 20 KB of text becomes a `truncated` preview.
+
+**`a_card_travels_as_the_library_sends_it`:** the params are `{session, turn_id, event{kind, …}}`.
+
+**Mutants, each watched to fail:**
+- M1: unsent calls get cards. **This one first survived.** The test's "unsent" example was an immediate repeat, which never reaches the card code. It was fixed with an F26 repeat.
+- M2: no masking.
+- M3: no preview.
+- M4: `ok` always true. It needed the refused call added to the test.
+
+**Also found by building on Linux:** the card forwarder was awaited outside its scope, a unix-only compile error that Windows couldn't see.
+
+**Also found:** staging's disk hit 100% (6.4 MB free) from my own 8.2 GB debug target. It was freed, the Mind logged no write errors, and `target/debug` is now removed after every staging test run.

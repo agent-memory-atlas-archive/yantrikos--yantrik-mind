@@ -58,6 +58,8 @@ const POLL: &str = "harness.poll";
 const CHUNK: &str = "harness.chunk";
 #[cfg(unix)]
 const COMPLETE: &str = "harness.complete";
+/// E.CARDS1: a tool call's card, beside the text.
+const EVENT: &str = "harness.event";
 #[cfg(unix)]
 const FAIL: &str = "harness.fail";
 
@@ -128,6 +130,26 @@ pub fn attach_in_background(mem: MemoryHandle, conv: Arc<ConversationEngine>) {
 // ═══════════════════════════════════════════════════════════════════════════════════════════
 // The client
 // ═══════════════════════════════════════════════════════════════════════════════════════════
+
+/// E.CARDS1: the params of one `harness.event`.
+fn event_params(session: &str, turn_id: u64, event: &mind_conversation::CallEvent) -> serde_json::Value {
+    serde_json::json!({ "session": session, "turn_id": turn_id, "event": event })
+}
+
+#[cfg(test)]
+mod card_tests {
+    /// E.CARDS1: the params are the harness library's -- `{session, turn_id, event}`, `kind` inside.
+    #[test]
+    fn a_card_travels_as_the_library_sends_it() {
+        let e = mind_conversation::CallEvent::ToolEnd { call: "s3".into(), ok: true, summary: "Done".into() };
+        let p = super::event_params("s7-00ff", 42, &e);
+        assert_eq!(p["session"], "s7-00ff");
+        assert_eq!(p["turn_id"], 42);
+        assert_eq!(p["event"]["kind"], "tool_end");
+        assert_eq!(p["event"]["call"], "s3");
+        assert_eq!(p["event"]["ok"], true);
+    }
+}
 
 /// One reply line from the desktop: its `result`, or its error message. Outside `wire` so it is
 /// tested on every platform.
@@ -480,8 +502,29 @@ async fn serve(
                 let raw: String = turn["context"].as_str().unwrap_or_default().chars().take(4000).collect();
                 eprintln!("[harness] turn {turn_id}: hand-over in the context: {raw}");
             }
+            // E.CARDS1: the turn's tool calls, forwarded as cards in order while it thinks.
+            let (cards, mut card_rx) = tokio::sync::mpsc::unbounded_channel::<mind_conversation::CallEvent>();
+            let forward = {
+                let (address, session) = (address.to_string(), session.to_string());
+                tokio::spawn(async move {
+                    let mut listening = true;
+                    while let Some(e) = card_rx.recv().await {
+                        if !listening {
+                            continue;
+                        }
+                        if let Err(msg) = call(address.clone(), EVENT, event_params(&session, turn_id, &e), timeout).await {
+                            if msg.contains("unknown method") {
+                                eprintln!("[harness] this desktop does not take harness.event; no cards this turn");
+                                listening = false;
+                            }
+                        }
+                    }
+                })
+            };
             let mut thinking = tokio::spawn(async move {
-                mind_conversation::with_person_home(home, take_turn(&mem, &conv, &text, from_context)).await
+                mind_conversation::TURN_CALLS
+                    .scope(cards, mind_conversation::with_person_home(home, take_turn(&mem, &conv, &text, from_context)))
+                    .await
             });
             // A turn can outlast the desktop's 90-second presence window, and this loop does not
             // poll while it thinks: "Write a note titled Shopping…" took 93 seconds and the
@@ -489,7 +532,7 @@ async fn serve(
             // chunk every 30 seconds keeps the session present without adding text.
             let mut beat = tokio::time::interval(HEARTBEAT);
             beat.tick().await; // the first tick is immediate
-            loop {
+            let done = loop {
                 tokio::select! {
                     done = &mut thinking => break done,
                     _ = beat.tick() => {
@@ -502,7 +545,10 @@ async fn serve(
                         .await;
                     }
                 }
-            }
+            };
+            // E.CARDS1: every card lands before the answer does (the sender went with the turn).
+            let _ = forward.await;
+            done
         };
 
         // ── Answer ──
