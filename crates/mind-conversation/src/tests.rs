@@ -16647,6 +16647,18 @@ mod desktop_consent_and_stall_wiring {
         describes: Vec<&str>,
         acts: Vec<&str>,
     ) -> Run {
+        run_as(prompt, home, false, steps, describes, acts).await
+    }
+
+    /// `mind_account`: as if running under the minds' account (E.HOME2).
+    async fn run_as(
+        prompt: &str,
+        home: Option<String>,
+        mind_account: bool,
+        steps: Vec<Step>,
+        describes: Vec<&str>,
+        acts: Vec<&str>,
+    ) -> Run {
         let seen = Arc::new(StdMutex::new(Vec::new()));
         let timeouts = Arc::new(StdMutex::new(Vec::new()));
         let script = Script {
@@ -16680,7 +16692,7 @@ mod desktop_consent_and_stall_wiring {
             |v: Vec<&str>| v.into_iter().map(|s| Ok(s.to_string())).collect::<Vec<_>>();
         hub.add_scripted_tool(tool("os_describe"), script_of(describes)).unwrap();
         hub.add_scripted_tool(tool("os_act"), script_of(acts)).unwrap();
-        let conv = ConversationEngine::new(memarc, pool, "YM").with_mcp(hub.clone()).with_home_dir(home);
+        let conv = ConversationEngine::new(memarc, pool, "YM").with_mcp(hub.clone()).with_home_dir(home).with_mind_account(mind_account);
         let reply = conv
             .agent_loop_for_eval(prompt, &TurnIdentity::primary())
             .await
@@ -17247,6 +17259,34 @@ mod desktop_consent_and_stall_wiring {
         .await;
         let _ = std::fs::remove_dir_all(&home);
         assert!(!there.prompts.iter().any(|p| p.contains("nothing is at ~/d/notes.txt yet")), "nudged although the file is there");
+    }
+
+    /// E.HOME2, 520 live (8c9bced): under the minds' account, F21 says nothing about a home it was
+    /// not told or cannot see -- and still speaks about one it can.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn under_the_minds_account_only_a_visible_told_home_is_checked() {
+        let mind = fresh_home("h2mind");
+        let person = fresh_home("h2person");
+        let wrote = || vec![Step::Call("mcp.yantrik-os.os_act", act("editor", "new", "hello"))];
+        let saved = || vec!["Done \u{2014} Text Editor \u{2014} x.txt, 1 line, saved"];
+        let ask = "Create a text file at ~/x.txt containing hello";
+        let untold = run_as(ask, Some(mind.to_string_lossy().into_owned()), true, wrote(), vec![SHELL], saved()).await;
+        let hidden = crate::with_person_home(
+            Some("/ym-home2-hidden-by-protecthome".into()),
+            run_as(ask, Some(mind.to_string_lossy().into_owned()), true, wrote(), vec![SHELL], saved()),
+        )
+        .await;
+        let visible = crate::with_person_home(
+            Some(person.to_string_lossy().into_owned()),
+            run_as(ask, Some(mind.to_string_lossy().into_owned()), true, wrote(), vec![SHELL], saved()),
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&mind);
+        let _ = std::fs::remove_dir_all(&person);
+        assert!(!untold.reply.contains("Nothing is at"), "claimed missing against its own home: {}", untold.reply);
+        assert!(!untold.prompts.iter().any(|p| p.contains(&format!("home folder on this computer is {}", mind.to_string_lossy()))), "told the model its own home is the person's");
+        assert!(!hidden.reply.contains("Nothing is at"), "claimed missing for a home it cannot see: {}", hidden.reply);
+        assert!(visible.reply.contains("Nothing is at ~/x.txt yet"), "a visible told home still gets F21: {}", visible.reply);
     }
 
     /// F21's kill criteria: a file that is there, a request that names no path, a delete, and a

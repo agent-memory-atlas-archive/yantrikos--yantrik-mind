@@ -10132,3 +10132,29 @@ F17 already gives one more step at this exit when a document is unsaved. F21 kno
 - Three mutants, all watched to fail: F33 off; the folder never named; nudging when the file is there.
 - Full suite 2107 passed, 0 failed.
 - Not measured yet: whether the model then does the steps. That is for the next hard-set run.
+
+## E.HOME2 — PREREG: under the minds' account, the Mind says nothing about files it cannot see
+
+**Seen live on VM 520** (OS 8c9bced, Mind 6831b53 as `yantrik-mind`, read through the new `yantrik-mind-log` helper). "Save a text file at ~/f33-check/notes.txt …":
+- The Mind did it right: open the editor, files_go ~, `files_new_folder f33-check`, `new`, `save_as`. The file held "kept safe f33".
+- Then F21 nudged, and the reply ended "(Nothing is at ~/f33-check/notes.txt yet — it was not created.)". **A false negative claim.**
+
+**Cause:**
+- `context.machine.home` is not sent yet, so `~` fell back to the Mind's own `$HOME` (`/var/lib/yantrik-mind`).
+- The unit's `ProtectHome=yes` makes `/home` *empty*, not unreadable, so even the right path answers NotFound, not EACCES, and E.HOME1's guard cannot catch it.
+- Under the minds' account a filesystem check cannot tell missing from hidden.
+
+**E.HOME2:** when the Mind runs as the minds' account (`YANTRIK_MIND_RUN` set at start):
+- The person's home is only what the desktop said (`context.machine.home`); `$HOME` is never used for it.
+- F21, F33 and the prompt's home line speak only when that home is visible to the Mind and the path lies under it. Otherwise they stay silent.
+- Unchanged for a Mind running as the person.
+
+**Kill criteria:**
+- Minds' account with no desktop home: no note, and no home line naming the Mind's own home.
+- Minds' account with a desktop home the Mind cannot see: no note.
+- Minds' account with a visible desktop home and the file missing: the note, as F21.
+
+**E.HOME2 result:**
+- An engine field `mind_account` (from `YANTRIK_MIND_RUN` at start). In that mode `person_home` is only the desktop's word, and `missing_goal` requires that home to be visible and the path to lie inside it.
+- A loop test with three cases (untold, told but hidden, told and visible).
+- Two mutants, both watched to fail. Full suite 2108 passed, 0 failed.

@@ -5735,6 +5735,9 @@ pub struct ConversationEngine {
     /// the model; E.ARENA1-F21 resolves a requested `~/` path against it. A field so a test can
     /// point it at a folder it controls.
     home_dir: Option<String>,
+    /// E.HOME2: this process runs as the minds' account (yantrik-os #411; the unit sets
+    /// YANTRIK_MIND_RUN). Its own $HOME is then not the person's, and ProtectHome hides theirs.
+    mind_account: bool,
 }
 
 impl ConversationEngine {
@@ -5833,6 +5836,7 @@ impl ConversationEngine {
             event_tally: Arc::new(Mutex::new(std::collections::HashMap::new())),
             twitch_last: Arc::new(Mutex::new(0)),
             home_dir: std::env::var("HOME").ok(),
+            mind_account: std::env::var("YANTRIK_MIND_RUN").is_ok_and(|v| !v.trim().is_empty()),
         }
     }
 
@@ -7047,6 +7051,13 @@ impl ConversationEngine {
         hub.set_server_env(desktop::DESKTOP_SERVER, "YANTRIK_AGENT_TOKEN", token)
     }
 
+    /// E.HOME2: as if running under the minds' account, for a test.
+    #[cfg(test)]
+    pub(crate) fn with_mind_account(mut self, yes: bool) -> Self {
+        self.mind_account = yes;
+        self
+    }
+
     /// Where `~` is, for a test that must not depend on the machine running it.
     #[cfg(test)]
     pub(crate) fn with_home_dir(mut self, home: Option<String>) -> Self {
@@ -7061,14 +7072,28 @@ impl ConversationEngine {
             return None;
         }
         let asked = desktop::goal_path(user_text)?;
-        let at = desktop::on_this_machine(&asked, self.person_home().as_deref())?;
+        let home = self.person_home();
+        let at = desktop::on_this_machine(&asked, home.as_deref())?;
+        // E.HOME2: under the minds' account only a home the desktop named, that this process can
+        // actually see, and a path inside it -- ProtectHome answers "not found" for what it hides.
+        if self.mind_account {
+            let home = home?;
+            if desktop::is_there(std::path::Path::new(&home)) != Some(true) || !at.starts_with(&home) {
+                return None;
+            }
+        }
         // E.HOME1: only "not found" is missing; not being allowed to look says nothing.
         (desktop::is_there(&at) == Some(false)).then_some(asked)
     }
 
     /// E.HOME1: the person's home -- the desktop's word for this turn, else this process's $HOME.
     fn person_home(&self) -> Option<String> {
-        PERSON_HOME.try_with(|h| h.clone()).ok().or_else(|| self.home_dir.clone())
+        let told = PERSON_HOME.try_with(|h| h.clone()).ok();
+        // E.HOME2: under the minds' account this process's $HOME is its own, never the person's.
+        if self.mind_account {
+            return told;
+        }
+        told.or_else(|| self.home_dir.clone())
     }
 
     /// Load the plugin manifest (enable/disable + security overlay) from a JSON file and remember the
