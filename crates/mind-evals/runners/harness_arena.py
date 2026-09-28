@@ -109,10 +109,17 @@ def wait_idle(limit_s=TURN_TIMEOUT_S):
     had killed; all three came back "still working on the previous request" in 1.9 s and were scored
     as failures. A mind that is busy has not been asked anything yet. Wait until nothing in the
     conversation is streaming and it has been still for SETTLE_S.
+
+    False at once on a locked desktop: it answers `locked` and nothing else, so the conversation
+    never changes and this used to wait out the whole limit (300 s on 520, after a turn the mind
+    had finished in 13 s). The caller's own lock check then voids the cell.
     """
     t0, last, since = time.time(), None, time.time()
     while time.time() - t0 < limit_s:
-        conv = conversation()
+        shell = describe("shell") or {}
+        if shell.get("locked"):
+            return False
+        conv = shell.get("conversation") or []
         snap = json.dumps(conv[-2:]) if conv else ""
         streaming = any(m.get("streaming") for m in conv[-3:])
         if streaming or snap != last:
@@ -124,14 +131,22 @@ def wait_idle(limit_s=TURN_TIMEOUT_S):
 
 
 def ask(text):
-    """Put one turn to the active mind and wait for it to finish. Returns (reply, seconds, done)."""
+    """Put one turn to the active mind and wait for it to finish. Returns (reply, seconds, done).
+
+    Not done, at once, when the desktop is locked before or during the turn: nothing it says after
+    that can be read, and the caller voids the cell as locked."""
     wait_idle()
+    if desktop_locked():
+        return "", 0.0, False
     t0 = time.time()
     act("shell", "send_message", text=text)
     last, stable_since = None, None
     while time.time() - t0 < TURN_TIMEOUT_S:
         time.sleep(POLL_S)
-        conv = conversation()
+        shell = describe("shell") or {}
+        if shell.get("locked"):
+            return (last or ""), round(time.time() - t0, 1), False
+        conv = shell.get("conversation") or []
         # Our message, then everything after it. Matched by text from the end, because the
         # conversation may be capped and indexes are not stable.
         idx = None
