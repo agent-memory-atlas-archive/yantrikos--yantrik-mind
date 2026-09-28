@@ -95,8 +95,9 @@ impl ExecResult {
 
 #[derive(Default)]
 pub struct Sandbox {
-    /// A host dir to mask with a tmpfs inside the sandbox (e.g. the mind's state dir). Optional.
-    hidden_dir: Option<String>,
+    /// Host dirs to mask with a tmpfs inside the sandbox (the mind's state root, its database's
+    /// folder -- E.ROOT1: they can differ, and both hold what sandboxed code must not read).
+    hidden_dirs: Vec<String>,
 }
 
 impl Sandbox {
@@ -106,7 +107,10 @@ impl Sandbox {
 
     /// Mask this host directory with an empty tmpfs inside the sandbox (hide the mind's DB/state).
     pub fn hiding(mut self, dir: impl Into<String>) -> Self {
-        self.hidden_dir = Some(dir.into());
+        let dir = dir.into();
+        if !self.hidden_dirs.contains(&dir) {
+            self.hidden_dirs.push(dir);
+        }
         self
     }
 
@@ -200,7 +204,7 @@ impl Sandbox {
         files: Vec<(String, String)>,
         run_sh: &str,
     ) -> std::io::Result<ExecResult> {
-        let hidden = self.hidden_dir.clone();
+        let hidden = self.hidden_dirs.clone();
         let run_sh = run_sh.to_string();
         tokio::task::spawn_blocking(move || Self::run_blocking(lim, seed, files, run_sh, hidden))
             .await
@@ -212,7 +216,7 @@ impl Sandbox {
         seed: Option<SeedTree>,
         files: Vec<(String, String)>,
         run_sh: String,
-        hidden: Option<String>,
+        hidden: Vec<String>,
     ) -> std::io::Result<ExecResult> {
         // Throwaway scratch dir (unique without rand: pid + seq + time).
         let seq = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
@@ -261,10 +265,10 @@ impl Sandbox {
         std::fs::write(scratch.join("run.sh"), &run_sh)?;
 
         let scratch_str = scratch.to_string_lossy().to_string();
-        let mount_line = match &hidden {
-            Some(d) => format!("mount -t tmpfs none {d} 2>/dev/null || true; "),
-            None => String::new(),
-        };
+        let mount_line: String = hidden
+            .iter()
+            .map(|d| format!("mount -t tmpfs none {d} 2>/dev/null || true; "))
+            .collect();
         // The scratch path is ours (no user input) → safe to interpolate. User code is in files only.
         let outer = format!(
             "{mount_line}cd {scratch_str}; exec prlimit --cpu={cpu} --as={mem} --nproc={procs} --fsize={fsize} --nofile=256 -- /bin/sh run.sh",

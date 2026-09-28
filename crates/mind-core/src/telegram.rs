@@ -1312,18 +1312,11 @@ fn ctl_handle(
 
 /// Tiny localhost-only control server (own thread) backing the `ym` CLI. Lets a terminal talk to the
 /// SAME running companion as telegram (shared memory). 127.0.0.1 only; YM_CTL=off disables.
-/// The mind's state directory: the parent of `YM_DB`, else `/var/lib/yantrik-mind`. The device store
-/// and its `console.token` anchor live here (owner-only), the same dir the sandbox is denied.
+/// The mind's trust directory: the parent of `YM_DB`, else the state root, else a folder private to
+/// this process (E.ROOT1 -- never a guessed shared one). The device store and its `console.token`
+/// anchor live here (owner-only), a dir the sandbox is denied.
 pub(crate) fn state_dir() -> String {
-    std::env::var("YM_DB")
-        .ok()
-        .and_then(|p| {
-            std::path::Path::new(&p)
-                .parent()
-                .map(|d| d.to_string_lossy().to_string())
-        })
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| "/var/lib/yantrik-mind".to_string())
+    mind_types::paths::trust_dir().to_string_lossy().into_owned()
 }
 
 /// Open the device-trust store and one-time-init the console operator. Returns None (fail-closed) if

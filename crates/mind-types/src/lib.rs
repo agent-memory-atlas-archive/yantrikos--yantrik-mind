@@ -12,6 +12,7 @@ pub mod error;
 pub mod event;
 pub mod harm;
 pub mod memory;
+pub mod paths;
 pub mod purpose;
 pub mod safety;
 pub mod task;

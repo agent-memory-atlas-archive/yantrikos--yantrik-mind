@@ -304,7 +304,10 @@ fn horizon_history_id(path: &str) -> Option<String> {
 /// E.WEB11: the published-pages directory — the ONE folder the Files listing may read, fixed
 /// server-side. Same source the static server on :8088 serves; the client never names a path.
 fn published_pages_dir() -> String {
-    std::env::var("YM_WEB_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/public".to_string())
+    // E.ROOT1: no state root, an empty name -- read_dir fails and the listing is empty.
+    mind_types::paths::state_file("YM_WEB_DIR", "public")
+        .map(|p| p.to_string_lossy().into_owned())
+        .unwrap_or_default()
 }
 
 /// List the published pages: files only, servable extensions only, no dotfiles, no traversal —

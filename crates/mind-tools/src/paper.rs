@@ -5,10 +5,8 @@
 use std::path::PathBuf;
 
 fn papers_dir() -> PathBuf {
-    let d = PathBuf::from(
-        std::env::var("YM_CODE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/repos".into()),
-    )
-    .join("_papers");
+    // E.ROOT1: the same repos folder `code` uses.
+    let d = mind_types::paths::state_or_scratch("YM_CODE_DIR", "repos").join("_papers");
     let _ = std::fs::create_dir_all(&d);
     d
 }

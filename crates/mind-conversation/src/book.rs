@@ -418,8 +418,9 @@ impl super::ConversationEngine {
                 }
             }
         }
-        let dir = "/var/lib/yantrik-mind/book";
-        let _ = std::fs::create_dir_all(dir);
+        // E.ROOT1: under this Mind's state root.
+        let dir = mind_types::paths::state_or_scratch("YM_BOOK_DIR", "book").to_string_lossy().into_owned();
+        let _ = std::fs::create_dir_all(&dir);
         let path = format!("{dir}/family-book.md");
         let words = md.split_whitespace().count();
         match std::fs::write(&path, &md) {

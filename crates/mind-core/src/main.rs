@@ -113,8 +113,12 @@ fn spawn_web_server() {
         .ok()
         .and_then(|s| s.parse().ok())
         .unwrap_or(8088);
-    let dir =
-        std::env::var("YM_WEB_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/public".to_string());
+    // E.ROOT1: no state root, nothing to serve.
+    let Some(dir) = mind_types::paths::state_file("YM_WEB_DIR", "public") else {
+        eprintln!("[web] no state root -- published pages are off");
+        return;
+    };
+    let dir = dir.to_string_lossy().into_owned();
     let _ = std::fs::create_dir_all(&dir);
     std::thread::spawn(
         move || match std::net::TcpListener::bind(("0.0.0.0", port)) {
@@ -194,6 +198,13 @@ async fn main() -> anyhow::Result<()> {
     }
 
     let db = std::env::var("YM_DB").unwrap_or_else(|_| ":memory:".to_string());
+    // E.ROOT1: say once where this Mind's state lives -- or that it keeps none.
+    match mind_types::paths::state_root() {
+        Some(root) => println!("state: {}", root.display()),
+        None => eprintln!(
+            "[state] no state root (YM_STATE_DIR, STATE_DIRECTORY or a YM_DB file) -- state is kept in a folder private to this process and lost when it exits"
+        ),
+    }
     // dim 64 = the bundled YantrikDB embedder dimension; YantrikDB::new auto-attaches the
     // in-process model2vec embedder at this dim, so record/recall are genuinely SEMANTIC with no
     // external server. (A dim-8 DB from before this upgrade is incompatible — recreate the file.)

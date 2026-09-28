@@ -10261,3 +10261,55 @@ Five mutants, each watched to fail its own test:
 **Deviation from the #447 plan:** recall keeps the field name `source` (the writer's word) rather than renaming it `claimed_source`. The server's word is `written_by`. Renaming would break every client that reads `source` today.
 
 Full suite: 2115 passed, 0 failed.
+
+## E.ROOT1 — PREREG: one state root, and no path the Mind guesses
+
+This comes from yantrik-os #447: one Mind per person, running as `ym-<user>` with state in `/var/lib/yantrik-mind/<uid>/`. The Mind has **42 literal `/var/lib/yantrik-mind` fallbacks** in 24 files (counted with `grep`, excluding tests, comments, the `ym setup` template and one test string). Two resolve the root differently:
+- `YM_STATE_DIR`, otherwise the literal;
+- the parent of `YM_DB`, otherwise the literal. The code sandbox hides only this one.
+
+Today every box happens to use `/var/lib/yantrik-mind`, so the two agree. Under a per-person account the literal is somebody else's state, or no state at all.
+
+**E.ROOT1:**
+- `mind_types::paths::state_root()` resolves, in order: `YM_STATE_DIR`, then systemd's `$STATE_DIRECTORY` (its first entry), then the folder `YM_DB` is in. Otherwise nothing.
+- Every state path is `state_file(ENV_OVERRIDE, relative)`: the specific variable if it's set, otherwise under the root.
+- A Mind with no root (an in-memory dev mind) keeps those features off and says so once at start. It never writes to or reads from a guessed path.
+- The sandbox hides both the root and the database's folder.
+- A test fails the build if any `/var/lib/yantrik-mind` literal comes back outside tests, comments and the `ym setup` template.
+
+**Kill criteria:**
+- On staging's environment (`STATE_DIRECTORY=/var/lib/yantrik-mind`, `YM_DB` in it) every path resolves exactly as before.
+- With only `YM_DB=/x/y/mind.db`, everything lands under `/x/y`.
+- With nothing set, no state path resolves.
+- The grep test catches a literal that is put back.
+
+**E.ROOT1 — RESULT: built (full suite 2119 passed, 0 failed). All 42 sites converted, and the literal is left only in the `ym setup` template (2 lines) and one test string.**
+
+**Deviation from the prereg.** For a Mind with no root, "features off" would have meant restructuring most of the 27 mind-conversation sites into Option blocks. Instead, a rootless Mind keeps its state in a folder **private to its process** (`<temp>/yantrik-mind-<pid>`, 0700 on unix): working, kept nowhere, never shared, never guessed. The prereg's principle holds: no path the Mind guesses, and no folder shared with another Mind.
+
+The exceptions, where "off" is the natural shape, are now Option:
+- the web server and the published-pages listing;
+- the Telegram hand-off offset;
+- the provider-usage rollup;
+- the plugins/packs manifests;
+- the Google Photos and OneDrive clients, where there's no place to keep a token, so no client.
+
+The device store and console token stay in the database's folder first, exactly as before; only their fallback changes.
+
+**Other changes:**
+- **The sandbox hides every folder** in `paths::hidden_dirs()` (the state root and the database's folder), in mind-core's sandbox and in the three mind-conversation sandboxes (syntax check, build, smoke). Before, it hid one.
+- **At start**, mind-core prints `state: <root>`, or says it has none.
+- **Sites that read `YM_STATE_DIR`** now read `state_root()`, whose first choice is still `YM_STATE_DIR`. Sites with a specific variable (`YM_TAPE_PATH`, `YM_TOKEN_LEDGER`, …) keep it as the override. So every box that set a variable resolves exactly as before, and only the fallbacks changed.
+
+**Tests** (`mind-types/src/paths.rs`):
+- staging's environment resolves to `/var/lib/yantrik-mind` as before;
+- a person's `YM_DB` lands everything in its own folder;
+- `STATE_DIRECTORY`'s first entry is used;
+- the explicit root and the specific overrides win;
+- nothing set means no root;
+- `no_code_guesses_the_state_folder` scans every crate.
+
+**Mutants:**
+- M1, the literal put back in `surface.rs`: caught by the scan.
+- M2, `STATE_DIRECTORY` ignored: caught.
+- M3, the `:memory:` check removed: **survived, as an equivalent mutant.** `Path::new(":memory:").parent()` is empty, and the empty-folder filter already refuses it. The check stays as the stated intent.

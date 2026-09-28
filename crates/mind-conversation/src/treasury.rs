@@ -130,9 +130,7 @@ impl super::ConversationEngine {
     }
 
     pub(crate) fn budget_path() -> std::path::PathBuf {
-        std::path::PathBuf::from(
-            std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-        )
+        mind_types::paths::state_root_or_scratch()
         .join("budget.json")
     }
 

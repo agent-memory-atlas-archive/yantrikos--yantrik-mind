@@ -516,7 +516,10 @@ use mind_types::{
 };
 use yantrik_ml::{ChatMessage, GenerationConfig};
 
-const PROJECT_PROPOSALS_DIR: &str = "/var/lib/yantrik-mind/project-proposals";
+/// Where research-wing proposals live (E.ROOT1: under this Mind's state root).
+pub(crate) fn project_proposals_dir() -> std::path::PathBuf {
+    mind_types::paths::state_or_scratch("YM_PROPOSALS_DIR", "project-proposals")
+}
 
 /// A research-wing suggestion for a future project change. Proposals are data only: the
 /// conversation crate can validate and display them, but does not execute them.
@@ -701,7 +704,7 @@ fn proposal_age(modified: std::time::SystemTime) -> String {
 }
 
 fn pending_proposals() -> String {
-    let entries = match std::fs::read_dir(PROJECT_PROPOSALS_DIR) {
+    let entries = match std::fs::read_dir(project_proposals_dir()) {
         Ok(entries) => entries,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
             return "No pending project proposals.".to_string()
@@ -4656,7 +4659,7 @@ fn publish_html(name_hint: &str, html: &str) -> Option<String> {
     // is about was one function ignoring what another had decided.
     let safe = published_stem(name_hint);
     let dir =
-        std::env::var("YM_WEB_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/public".to_string());
+        mind_types::paths::state_or_scratch("YM_WEB_DIR", "public").to_string_lossy().into_owned();
     std::fs::create_dir_all(&dir).ok()?;
     std::fs::write(format!("{dir}/{safe}.html"), html).ok()?;
     let base = web_base_url();
@@ -4727,7 +4730,7 @@ pub(crate) fn page_filename(required: Option<&str>, html: &str, name: Option<&st
 /// One definition, because E.LINKS1 needs to read the same directory the writer writes.
 pub(crate) fn published_root(project: &str) -> std::path::PathBuf {
     let dir =
-        std::env::var("YM_WEB_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/public".to_string());
+        mind_types::paths::state_or_scratch("YM_WEB_DIR", "public").to_string_lossy().into_owned();
     std::path::Path::new(&dir).join(published_stem(project))
 }
 
@@ -7550,8 +7553,7 @@ impl ConversationEngine {
             ));
         }
         // Recent failures from my own evolution log.
-        let evo_path = std::env::var("YM_EVOLUTION_LOG")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/evolution.log".to_string());
+        let evo_path = mind_types::paths::state_or_scratch("YM_EVOLUTION_LOG", "evolution.log").to_string_lossy().into_owned();
         if let Ok(txt) = std::fs::read_to_string(&evo_path) {
             let fails: Vec<String> = txt
                 .lines()
@@ -9214,8 +9216,7 @@ WINDOW: all-time, latest 200
             // NOT "spend" — that is already the expense logger at line ~3884 and would shadow this
             // silently (the arm never fires; you just get the expense usage line).
             "tokens" | "buildspend" | "llm_spend" => {
-                let path = std::env::var("YM_TOKEN_LEDGER")
-                    .unwrap_or_else(|_| "/var/lib/yantrik-mind/token_ledger.log".to_string());
+                let path = mind_types::paths::state_or_scratch("YM_TOKEN_LEDGER", "token_ledger.log").to_string_lossy().into_owned();
                 match std::fs::read_to_string(&path) {
                     Ok(t) if !t.trim().is_empty() => {
                         let lines: Vec<&str> = t.lines().filter(|l| !l.trim().is_empty()).collect();
@@ -9785,7 +9786,7 @@ WINDOW: all-time, latest 200
             "forget-belief" | "unbelieve" if !rest.is_empty() => self.forget_beliefs_matching(&rest).await,
             // --- self-evolution scorecard: what the self-build loop has done, what's queued, kill state ---
             "evolution" | "selfbuild" => {
-                let dir = std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".to_string());
+                let dir = mind_types::paths::state_root_or_scratch().to_string_lossy().into_owned();
                 let log = std::fs::read_to_string(format!("{dir}/evolution.log")).unwrap_or_default();
                 let recent: Vec<&str> = log.lines().rev().take(12).collect();
                 let queue = std::fs::read_to_string(format!("{dir}/selfbuild-goals.txt")).unwrap_or_default();
@@ -10043,7 +10044,7 @@ WINDOW: all-time, latest 200
                     // namespace-scoped so nothing else in the database can ride along.
                     "seal-learned" | "seal" => {
                         let (dest, version) = if parg.is_empty() {
-                            (format!("{}/learned-craft.ydbpack", std::env::var("YM_WEB_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/public".into())), "0.1.0".to_string())
+                            (format!("{}/learned-craft.ydbpack", mind_types::paths::state_or_scratch("YM_WEB_DIR", "public").to_string_lossy().into_owned()), "0.1.0".to_string())
                         } else {
                             (parg.clone(), "0.1.0".to_string())
                         };
@@ -15674,7 +15675,7 @@ impl RecipeHost for MindRecipeHost {
             // the thinking; it was that nothing in the vocabulary could see this mind's own work.
             // Data existing is not data reachable.
             "own_proposals" => {
-                let dir = Path::new(PROJECT_PROPOSALS_DIR);
+                let dir = &project_proposals_dir();
                 let mut rows: Vec<(std::time::SystemTime, ProjectProposal)> = Vec::new();
                 if let Ok(entries) = std::fs::read_dir(dir) {
                     for entry in entries.flatten() {

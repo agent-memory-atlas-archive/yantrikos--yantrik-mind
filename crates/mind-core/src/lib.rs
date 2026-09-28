@@ -605,18 +605,17 @@ pub fn engine(mem: &MemoryHandle, pool: mind_inference::InferencePool) -> Conver
         .with_wiki(Arc::new(mind_tools::Wikipedia::new())) // keyless Wikipedia, always on
         .with_markets(Arc::new(mind_tools::LiveMarkets::new())) // keyless crypto + stock quotes
         .with_translator(Arc::new(mind_tools::GoogleTranslate::new())) // keyless translation
-        // Declarative plugin manifest: enable/disable + security level, no code edits. Toggles persist.
-        .with_plugins_manifest(
-            std::env::var("YM_PLUGINS_CONFIG")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/plugins.json".to_string()),
-        )
-        // Installed capability packs survive restarts (certified ones come back enabled), and
-        // certification verdicts land on the trust ledger when YM_WEFT_URL/KEY are set.
-        .with_packs_path(
-            std::env::var("YM_PACKS_CONFIG")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/packs.json".to_string()),
-        )
         .with_weft_from_env();
+    // Declarative plugin manifest: enable/disable + security level, no code edits. Toggles persist.
+    // Installed capability packs survive restarts (certified ones come back enabled), and
+    // certification verdicts land on the trust ledger when YM_WEFT_URL/KEY are set.
+    // E.ROOT1: both live under the state root; a Mind with none restores nothing and keeps nothing.
+    if let Some(p) = mind_types::paths::state_file("YM_PLUGINS_CONFIG", "plugins.json") {
+        eng = eng.with_plugins_manifest(p.to_string_lossy().into_owned());
+    }
+    if let Some(p) = mind_types::paths::state_file("YM_PACKS_CONFIG", "packs.json") {
+        eng = eng.with_packs_path(p.to_string_lossy().into_owned());
+    }
     if let Some(m) = &mail_read {
         eng = eng.with_mail(m.clone());
     }
@@ -831,16 +830,12 @@ pub fn engine(mem: &MemoryHandle, pool: mind_inference::InferencePool) -> Conver
 
     // Code sandbox: isolated (userns + no network), resource-limited execution of shell/python/rust.
     // Masks the mind's own state dir so sandboxed code can't read/corrupt the DB.
-    let state_dir = std::env::var("YM_DB")
-        .ok()
-        .and_then(|p| {
-            std::path::Path::new(&p)
-                .parent()
-                .map(|d| d.to_string_lossy().to_string())
-        })
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| "/var/lib/yantrik-mind".to_string());
-    eng = eng.with_sandbox(Arc::new(mind_tools::Sandbox::new().hiding(state_dir)));
+    // E.ROOT1: the state root AND the database's folder -- they can differ.
+    let mut sandbox = mind_tools::Sandbox::new();
+    for dir in [mind_types::paths::state_root(), mind_types::paths::db_dir()].into_iter().flatten() {
+        sandbox = sandbox.hiding(dir.to_string_lossy().into_owned());
+    }
+    eng = eng.with_sandbox(Arc::new(sandbox));
 
     // Remote worker pool: fan work out to the transferred LXCs over SSH (YM_WORKERS / YM_WORKER_KEY).
     if let Some(pool) = mind_tools::WorkerPool::from_env() {

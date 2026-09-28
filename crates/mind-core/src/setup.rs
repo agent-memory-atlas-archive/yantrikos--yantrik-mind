@@ -194,8 +194,11 @@ fn send_greeting(token: &str, chat_id: i64) {
 /// so the moment the poller starts it already knows the active chat and picks
 /// up cleanly after the /start message.
 fn persist_handoff(chat_id: i64, next_offset: i64) {
-    let offset_path =
-        std::env::var("YM_TG_OFFSET").unwrap_or_else(|_| "/var/lib/yantrik-mind/tg_offset".into());
+    // E.ROOT1: no state root, nothing to hand over.
+    let Some(offset_path) = mind_types::paths::state_file("YM_TG_OFFSET", "tg_offset") else {
+        return;
+    };
+    let offset_path = offset_path.to_string_lossy().into_owned();
     let _ = std::fs::write(&offset_path, next_offset.to_string());
     let _ = std::fs::write(format!("{offset_path}.active_chat"), chat_id.to_string());
 }

@@ -220,8 +220,7 @@ impl super::ConversationEngine {
         let faces_n = self.face_names().await.len();
         // MOVE 5 — visible self-extension: what the mind built/changed in ITSELF this week
         // (the self-build loop's evolution log + deploy count). The awe-tier line, made routine.
-        let evo_path = std::env::var("YM_EVOLUTION_LOG")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/evolution.log".to_string());
+        let evo_path = mind_types::paths::state_or_scratch("YM_EVOLUTION_LOG", "evolution.log").to_string_lossy().into_owned();
         let mut built: Vec<String> = Vec::new();
         let mut deploys = 0u32;
         if let Ok(txt) = std::fs::read_to_string(&evo_path) {

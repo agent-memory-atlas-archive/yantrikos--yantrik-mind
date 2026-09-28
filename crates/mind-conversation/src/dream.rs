@@ -360,9 +360,7 @@ impl super::ConversationEngine {
             .take(5000)
             .collect();
         let recent: String = std::fs::read_to_string(
-            std::path::PathBuf::from(
-                std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-            )
+            mind_types::paths::state_root_or_scratch()
             .join("evolution.log"),
         )
         .unwrap_or_default()
@@ -426,9 +424,7 @@ impl super::ConversationEngine {
         let mut queued = String::new();
         if goal.contains("mind-") && goal.len() > 40 && !goal.to_lowercase().contains("governance")
         {
-            let goals_path = std::path::PathBuf::from(
-                std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-            )
+            let goals_path = mind_types::paths::state_root_or_scratch()
             .join("selfbuild-goals.txt");
             let qlen = std::fs::read_to_string(&goals_path)
                 .map(|c| {
@@ -462,9 +458,7 @@ impl super::ConversationEngine {
     /// but couldn't afford), forge referee verdicts, and its studied self-architecture (codekb).
     /// One panel pass ranks 3 ideas; the top grounded one auto-queues into the self-build loop.
     pub async fn self_ideate(&self) -> String {
-        let state = std::path::PathBuf::from(
-            std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-        );
+        let state = mind_types::paths::state_root_or_scratch();
         // Evidence 1: what recent builds did (outcomes, failures)
         let evo = std::fs::read_to_string(state.join("evolution.log")).unwrap_or_default();
         let evo_tail: String = evo
@@ -859,10 +853,7 @@ impl super::ConversationEngine {
                 let goal = format!(
                     "Regret cluster ({n} misses): the owner repeatedly asked about \"{subj}\" before anything was prepared. Find why the Night Shift's future scan or packet compiler misses this subject class and fix the detection or add the missing packet type, with a test reproducing the miss."
                 );
-                let goals_path = std::path::PathBuf::from(
-                    std::env::var("YM_STATE_DIR")
-                        .unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-                )
+                let goals_path = mind_types::paths::state_root_or_scratch()
                 .join("selfbuild-goals.txt");
                 if let Ok(mut cur) = std::fs::read_to_string(&goals_path) {
                     if !cur.contains(&subj) {

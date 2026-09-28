@@ -1159,9 +1159,7 @@ impl super::ConversationEngine {
             let grounded = top.contains("mind-")
                 || top.contains("ConversationEngine")
                 || top.contains("Memory");
-            let goals_path = std::path::PathBuf::from(
-                std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-            )
+            let goals_path = mind_types::paths::state_root_or_scratch()
             .join("selfbuild-goals.txt");
             let qlen = std::fs::read_to_string(&goals_path)
                 .map(|c| {

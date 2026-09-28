@@ -816,8 +816,7 @@ impl super::ConversationEngine {
             states: states.clone(),
         };
         let path = std::path::PathBuf::from(
-            std::env::var("YM_TAPE_PATH")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/tape.jsonl".into()),
+            mind_types::paths::state_or_scratch("YM_TAPE_PATH", "tape.jsonl").to_string_lossy().into_owned(),
         );
         let stored = mind_tools::tape::append_sample(&path, &sample).is_ok();
         let mut out = String::from("📼 tape: ");
@@ -841,8 +840,7 @@ impl super::ConversationEngine {
     /// `ym shadow` — the counterfactual over everything recorded so far.
     pub async fn shadow_report(&self) -> String {
         let path = std::path::PathBuf::from(
-            std::env::var("YM_TAPE_PATH")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/tape.jsonl".into()),
+            mind_types::paths::state_or_scratch("YM_TAPE_PATH", "tape.jsonl").to_string_lossy().into_owned(),
         );
         let tape = mind_tools::tape::read_tape(&path);
         if tape.is_empty() {
@@ -932,8 +930,7 @@ impl super::ConversationEngine {
     /// on those timings being right.
     pub async fn bar_drain(&self, max_frames: usize) -> String {
         let spool = std::path::PathBuf::from(
-            std::env::var("YM_BAR_SPOOL")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/barspool".into()),
+            mind_types::paths::state_or_scratch("YM_BAR_SPOOL", "barspool").to_string_lossy().into_owned(),
         );
         let mut frames: Vec<(std::time::SystemTime, std::path::PathBuf)> =
             match std::fs::read_dir(&spool) {
@@ -964,8 +961,7 @@ impl super::ConversationEngine {
             .filter(|s| !s.is_empty())
             .collect();
         let tape_path = std::path::PathBuf::from(
-            std::env::var("YM_TAPE_PATH")
-                .unwrap_or_else(|_| "/var/lib/yantrik-mind/tape.jsonl".into()),
+            mind_types::paths::state_or_scratch("YM_TAPE_PATH", "tape.jsonl").to_string_lossy().into_owned(),
         );
         let mut recorded = 0usize;
         let mut unreadable = 0usize;

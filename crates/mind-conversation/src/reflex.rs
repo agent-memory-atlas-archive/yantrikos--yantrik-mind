@@ -285,14 +285,7 @@ impl super::ConversationEngine {
     /// Append to the build queue (bounded, dedup-by-subject) — the same file
     /// and courtesy rules the regret wire uses.
     fn enqueue_reflex_goal(d: &ReflexDraft) -> bool {
-        let goals_path =
-            std::path::PathBuf::from(std::env::var("YM_SELFBUILD_GOALS").unwrap_or_else(|_| {
-                format!(
-                    "{}/selfbuild-goals.txt",
-                    std::env::var("YM_STATE_DIR")
-                        .unwrap_or_else(|_| "/var/lib/yantrik-mind".into())
-                )
-            }));
+        let goals_path = mind_types::paths::state_or_scratch("YM_SELFBUILD_GOALS", "selfbuild-goals.txt");
         let Ok(cur) = std::fs::read_to_string(&goals_path) else {
             return false;
         };

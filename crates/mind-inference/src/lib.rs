@@ -1751,8 +1751,10 @@ fn provider_record_usage(name: &str, served: bool, tokens_in: u64, tokens_out: u
         }
     }
     // Persistent daily rollup (best-effort; a failed write never blocks inference).
-    let dir = std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into());
-    let p = std::path::PathBuf::from(dir).join("provider_usage.json");
+    // E.ROOT1: no state root, no rollup.
+    let Some(p) = mind_types::paths::state_file("YM_PROVIDER_USAGE", "provider_usage.json") else {
+        return;
+    };
     let today = chrono::Local::now().format("%Y-%m-%d").to_string();
     let mut v: serde_json::Value = std::fs::read_to_string(&p)
         .ok()
@@ -1826,8 +1828,9 @@ fn nanogpt_weekly_pct() -> Option<f64> {
 /// the local meter `ym providers` renders. ISO week of today.
 pub fn provider_usage_rollup() -> Vec<(String, u64, u64, u64, u64, u64)> {
     use chrono::Datelike;
-    let dir = std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into());
-    let p = std::path::PathBuf::from(dir).join("provider_usage.json");
+    let Some(p) = mind_types::paths::state_file("YM_PROVIDER_USAGE", "provider_usage.json") else {
+        return Vec::new();
+    };
     let v: serde_json::Value = std::fs::read_to_string(&p)
         .ok()
         .and_then(|x| serde_json::from_str(&x).ok())

@@ -1103,7 +1103,7 @@ pub(crate) fn record_round_spend(
     job: &str,
     round: usize,
 ) {
-    let dir = std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".to_string());
+    let dir = mind_types::paths::state_root_or_scratch().to_string_lossy().into_owned();
     let when = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let lane = format!("delegate:{job}#{round}");
     let line = match spend {

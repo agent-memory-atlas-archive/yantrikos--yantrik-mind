@@ -989,8 +989,7 @@ fn resource_state() -> ResourceState {
 /// LLM spend from the token ledger. `None` when the ledger is absent or empty — "not measured"
 /// must stay distinguishable from "$0.00 spent".
 fn build_spend() -> Option<LedgerSpend> {
-    let path = std::env::var("YM_TOKEN_LEDGER")
-        .unwrap_or_else(|_| "/var/lib/yantrik-mind/token_ledger.log".to_string());
+    let path = mind_types::paths::state_or_scratch("YM_TOKEN_LEDGER", "token_ledger.log").to_string_lossy().into_owned();
     let text = std::fs::read_to_string(path).ok()?;
     // The ledger stamps UTC, so "today" is UTC too. Local-day bucketing here would put the
     // evening's spend on tomorrow's tally for anyone east of Greenwich.

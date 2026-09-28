@@ -116,7 +116,7 @@ pub(crate) async fn smoke_findings(stream: &str) -> Vec<String> {
         cpu_secs: 12,
         ..mind_tools::sandbox::Limits::default()
     };
-    let sb = mind_tools::Sandbox::new().hiding(crate::syntax::state_dir());
+    let sb = crate::syntax::hidden_sandbox();
     let n_files = files.len();
     let rendered = match sb.run_tree(lim, files, DRIVER).await {
         Ok(r) => r.render(),

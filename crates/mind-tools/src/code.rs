@@ -7,10 +7,10 @@
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+/// Where cloned repos live (E.ROOT1: `YM_CODE_DIR`, else `repos` under the state root, else a
+/// folder private to this process).
 fn workdir() -> PathBuf {
-    PathBuf::from(
-        std::env::var("YM_CODE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind/repos".into()),
-    )
+    mind_types::paths::state_or_scratch("YM_CODE_DIR", "repos")
 }
 
 /// Short repo name from a git URL: github.com/owner/name(.git) → "name".

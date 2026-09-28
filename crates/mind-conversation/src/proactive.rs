@@ -381,8 +381,7 @@ impl super::ConversationEngine {
     /// silently. Observation-only (rung 1–2): it never remediates, just notices + records. Cheap (a
     /// file read), no LLM. Deduped on (kind, about) so the same failure accrues rather than floods.
     pub async fn vigilance_scan(&self) -> Option<String> {
-        let path = std::env::var("YM_CRON_LOG")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/selfbuild-cron.log".to_string());
+        let path = mind_types::paths::state_or_scratch("YM_CRON_LOG", "selfbuild-cron.log").to_string_lossy().into_owned();
         let log = std::fs::read_to_string(&path).ok()?;
         let about = Self::vigilance_scan_text(&log)?;
         let _ = self

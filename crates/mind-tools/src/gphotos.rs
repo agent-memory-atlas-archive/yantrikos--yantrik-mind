@@ -73,8 +73,10 @@ impl GPhotosClient {
         let client_secret = std::env::var("YM_GPHOTOS_CLIENT_SECRET")
             .ok()
             .filter(|s| !s.trim().is_empty())?;
-        let token_path = std::env::var("YM_GPHOTOS_TOKEN_PATH")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/gphotos.json".to_string());
+        // E.ROOT1: no state root, no place to keep the token -- so no client.
+        let token_path = mind_types::paths::state_file("YM_GPHOTOS_TOKEN_PATH", "gphotos.json")?
+            .to_string_lossy()
+            .into_owned();
         Some(GPhotosClient {
             client_id: client_id.trim().to_string(),
             client_secret: client_secret.trim().to_string(),

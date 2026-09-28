@@ -1642,7 +1642,7 @@ THE PERSON YOU ARE ADVISING (make the recommendation personal to THEM, not to an
             s.push_str(&format!("\n- tracking for them: {}", topics.join(", ")));
         }
         let dir =
-            std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".to_string());
+            mind_types::paths::state_root_or_scratch().to_string_lossy().into_owned();
         if let Ok(log) = std::fs::read_to_string(format!("{dir}/evolution.log")) {
             if let Some(last) = log.lines().last() {
                 s.push_str(&format!(
@@ -2073,8 +2073,7 @@ THE PERSON YOU ARE ADVISING (make the recommendation personal to THEM, not to an
     /// scores whether the critic catches them). Reads the root-owned summary
     /// the mind cannot write — this report is about the mind, not by it.
     pub fn immune_report() -> String {
-        let path = std::env::var("YM_IMMUNE_SUMMARY")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/immune/immune_summary.json".into());
+        let path = mind_types::paths::state_or_scratch("YM_IMMUNE_SUMMARY", "immune/immune_summary.json").to_string_lossy().into_owned();
         let Some(s) = std::fs::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())
@@ -2239,8 +2238,7 @@ Truth{} I wrongly doubted: {}",
     /// One-line immunology status for the morning board; `ym immune` has the
     /// full report. Reads the root-owned summary the mind cannot write.
     pub fn immune_board_line() -> String {
-        let path = std::env::var("YM_IMMUNE_SUMMARY")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/immune/immune_summary.json".into());
+        let path = mind_types::paths::state_or_scratch("YM_IMMUNE_SUMMARY", "immune/immune_summary.json").to_string_lossy().into_owned();
         let Some(s) = std::fs::read_to_string(&path)
             .ok()
             .and_then(|t| serde_json::from_str::<serde_json::Value>(&t).ok())

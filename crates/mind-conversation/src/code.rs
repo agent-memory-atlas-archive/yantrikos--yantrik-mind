@@ -786,8 +786,7 @@ impl super::ConversationEngine {
         let Some(goal) = props.get(n.saturating_sub(1)) else {
             return format!("No proposal #{n} for `{key}` — run `paper adapt {key}` first.");
         };
-        let path = std::env::var("YM_SELFBUILD_GOALS")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/selfbuild-goals.txt".into());
+        let path = mind_types::paths::state_or_scratch("YM_SELFBUILD_GOALS", "selfbuild-goals.txt").to_string_lossy().into_owned();
         use std::io::Write as _;
         match std::fs::OpenOptions::new()
             .create(true)
@@ -803,9 +802,7 @@ impl super::ConversationEngine {
     }
 
     pub(crate) fn forge_dir(id: &str) -> std::path::PathBuf {
-        let d = std::path::PathBuf::from(
-            std::env::var("YM_STATE_DIR").unwrap_or_else(|_| "/var/lib/yantrik-mind".into()),
-        )
+        let d = mind_types::paths::state_root_or_scratch()
         .join("forge")
         .join(id);
         let _ = std::fs::create_dir_all(&d);
@@ -2337,7 +2334,7 @@ impl super::ConversationEngine {
         let mut proposal = ProjectProposal::from_json(&response.text[open..=close]).ok()?;
         // The commit is a fact about the checkout, not a thing the model may assert.
         proposal.base_sha = base_sha.to_string();
-        let dir = Path::new(PROJECT_PROPOSALS_DIR);
+        let dir = &project_proposals_dir();
         if already_proposed(dir, repo, base_sha, &proposal.goal) {
             return None;
         }
@@ -2527,7 +2524,7 @@ impl super::ConversationEngine {
             }
             None => None,
         };
-        let dir = Path::new(PROJECT_PROPOSALS_DIR);
+        let dir = &project_proposals_dir();
         let prior = latest_proposal_for(dir, &subject);
         match iter_step(head.as_deref(), prior.as_ref()) {
             IterStep::NoRepo => {

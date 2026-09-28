@@ -478,7 +478,7 @@ impl crate::ConversationEngine {
     /// Never reached from the nightly scan: WorkOps spools proposals and does not command builds.
     pub(crate) async fn work_build(&self, arg: &str) -> String {
         let want = arg.trim();
-        let dir = Path::new(crate::PROJECT_PROPOSALS_DIR);
+        let dir = &crate::project_proposals_dir();
         let Some(proposal) = newest_proposal(dir, (!want.is_empty()).then_some(want)) else {
             return if want.is_empty() {
                 "🔨 Nothing spooled to build. `work run` writes a proposal when a watched \
@@ -499,7 +499,7 @@ impl crate::ConversationEngine {
 
         // The check is model-authored, so the sandbox is not optional. An unverified diff is not
         // what rung 8 asks for, and running an unsandboxed check to get one would be worse.
-        let sandbox = mind_tools::Sandbox::new().hiding(crate::syntax::state_dir());
+        let sandbox = crate::syntax::hidden_sandbox();
         if !sandbox.available().await {
             return "🔨 Not building — the sandbox is unavailable here, and the acceptance test is \
                     the mind's own writing. It does not run outside one."

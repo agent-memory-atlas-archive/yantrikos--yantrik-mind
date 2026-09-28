@@ -47,8 +47,10 @@ impl OneDriveClient {
         let client_id = std::env::var("YM_OD_CLIENT_ID")
             .ok()
             .filter(|s| !s.trim().is_empty())?;
-        let token_path = std::env::var("YM_OD_TOKEN_PATH")
-            .unwrap_or_else(|_| "/var/lib/yantrik-mind/onedrive.json".to_string());
+        // E.ROOT1: no state root, no place to keep the token -- so no client.
+        let token_path = mind_types::paths::state_file("YM_OD_TOKEN_PATH", "onedrive.json")?
+            .to_string_lossy()
+            .into_owned();
         Some(OneDriveClient {
             client_id: client_id.trim().to_string(),
             token_path,

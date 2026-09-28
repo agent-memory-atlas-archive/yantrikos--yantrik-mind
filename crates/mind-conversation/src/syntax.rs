@@ -33,18 +33,12 @@ use crate::fileset::parse_file_stream;
 /// reads, never code that runs. `-I -S -B` (set by the sandbox) keep it off site-packages too.
 const CHECK: &str = "import ast\nsrc = open('target.py').read()\ntry:\n    ast.parse(src)\n    print('OK')\nexcept SyntaxError as e:\n    print('SYNTAX:', e)";
 
-/// The mind's state directory, masked inside the sandbox so the check cannot read it.
-/// Derived exactly as `mind-core` derives it for the engine's own sandbox.
-pub(crate) fn state_dir() -> String {
-    std::env::var("YM_DB")
-        .ok()
-        .and_then(|p| {
-            std::path::Path::new(&p)
-                .parent()
-                .map(|d| d.to_string_lossy().to_string())
-        })
-        .filter(|d| !d.is_empty())
-        .unwrap_or_else(|| "/var/lib/yantrik-mind".to_string())
+/// A sandbox with the mind's state masked, so checked code cannot read it -- the state root and the
+/// database's folder both (E.ROOT1: they can differ), exactly as `mind-core` masks its own.
+pub(crate) fn hidden_sandbox() -> mind_tools::Sandbox {
+    mind_types::paths::hidden_dirs()
+        .into_iter()
+        .fold(mind_tools::Sandbox::new(), |sb, d| sb.hiding(d.to_string_lossy().into_owned()))
 }
 
 /// What one sandbox answer means. Three outcomes, and only one of them convicts.
@@ -156,7 +150,7 @@ pub(crate) async fn unparseable_python(stream: &str) -> Vec<String> {
     if pys.is_empty() {
         return Vec::new(); // a build with no python pays nothing, not even a spawn
     }
-    let sb = mind_tools::Sandbox::new().hiding(state_dir());
+    let sb = hidden_sandbox();
     let mut out = Vec::new();
     // E.SYNTAX3: once the sandbox has failed here, every later file goes straight to the fallback.
     let mut fallback = false;
