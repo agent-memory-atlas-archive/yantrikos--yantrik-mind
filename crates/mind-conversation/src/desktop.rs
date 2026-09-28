@@ -822,12 +822,28 @@ fn classify_lookup(r: std::io::Result<()>) -> Option<bool> {
 }
 
 /// E.ARENA1-F21: said once, before a turn ends with the requested path still missing.
-pub(crate) fn goal_nudge(step: usize, path: &str) -> String {
+pub(crate) fn goal_nudge(step: usize, path: &str, missing_folder: Option<&str>) -> String {
+    // E.ARENA1-F33: the concrete blocker, when the world shows one. The hard smoke's T9: the
+    // folder did not exist, the Editor refuses to save into a missing folder, and the model went
+    // back to `files_go` twice.
+    let folder = missing_folder
+        .map(|f| format!(" The folder {f} does not exist yet: make it first (Files: go to its parent, then `files_new_folder`)."))
+        .unwrap_or_default();
     format!(
         "\n[{step}] (the request asked for {path}, and nothing is at {path} yet -- it was not \
-         created. Make it now (for text: the editor's `new` with the text, then `save_as` with that \
-         path), or say plainly that it was not made.)"
+         created.{folder} Make it now (for text: open the editor if it is closed, then its `new` with \
+         the text, then `save_as` with that path), or say plainly that it was not made.)"
     )
+}
+
+/// E.ARENA1-F33: the requested path's folder, as the person wrote it, when it is not there.
+pub(crate) fn missing_folder_of(path: &str, home: Option<&str>) -> Option<String> {
+    let (parent, _) = path.rsplit_once('/')?;
+    if parent.is_empty() || parent == "~" {
+        return None;
+    }
+    let at = on_this_machine(parent, home)?;
+    (is_there(&at) == Some(false)).then(|| parent.to_string())
 }
 
 /// E.ARENA1-F21: appended, by code, when a turn ends with the requested path still missing.
@@ -1508,7 +1524,11 @@ mod tests {
         assert_eq!(on_this_machine("~/a.txt", Some("  ")), None);
         assert_eq!(on_this_machine("/tmp/a.txt", None), Some(std::path::PathBuf::from("/tmp/a.txt")));
         assert!(goal_missing_note("~/a.txt").contains("~/a.txt"));
-        assert!(goal_nudge(3, "~/a.txt").contains("save_as"));
+        assert!(goal_nudge(3, "~/a.txt", None).contains("save_as"));
+        assert!(goal_nudge(3, "~/d/a.txt", Some("~/d")).contains("The folder ~/d does not exist yet"));
+        assert!(!goal_nudge(3, "~/a.txt", None).contains("does not exist yet"));
+        assert_eq!(missing_folder_of("~/a.txt", Some("/home/y")), None, "home itself is never the missing folder");
+        assert_eq!(missing_folder_of("/ym-f33-nowhere/sub/a.txt", None).as_deref(), Some("/ym-f33-nowhere/sub"));
     }
 
     /// yantrik-os #384 adds a `state: {…}` line to every action result, and keeps the prose first

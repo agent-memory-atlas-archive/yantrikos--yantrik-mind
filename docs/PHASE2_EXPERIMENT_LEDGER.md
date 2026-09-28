@@ -10109,3 +10109,26 @@ A minute later `describe weather` said "15°C in London". The service answers; t
 - **T8 and T9 failed** with the model describing the steps (open the editor, `new`, `save_as`) instead of taking them. F21's note said honestly that the file was not created.
 
 T9 passed in R4 round 1, so at n=1 this is not evidence of a regression. The cause needs the turn's journal: the system unit's journal is not readable as `yantrik`, and yantrik-os-f4 has been asked for it.
+
+## E.ARENA1-F33 — PREREG: repeats do not end a turn whose requested file is still missing
+
+**Cause of the hard-smoke T8/T9 misses**, from the Mind's journal (sent by yantrik-os-f4; the system unit's journal is unreadable as `yantrik`):
+- **Both turns were ended by the repeat guard, not by the model:** "already called with these args — reusing the work log", twice, then compose, with 0 barren.
+- **T8** described the calendar, showed the date, and re-described it. It never wrote `~/arena-…-first.txt`.
+- **T9** did files_go and saw "editor is closed", then repeated files_go twice. The folder `~/arena-…-dir` did not exist.
+
+F17 already gives one more step at this exit when a document is unsaved. F21 knows the requested file is missing but speaks only at the answer exit, never at this one.
+
+**F33:** where repeats would end the turn (both repeat branches, after F17), if the request names a path that is still missing and F21 has not nudged yet, the loop gives one more step with F21's nudge instead of composing. The nudge names the concrete blocker when there is one: the requested file's folder does not exist yet (make it first), and the editor must be opened if it is closed.
+
+**Kill criteria:**
+- A turn that repeats a call with the requested file missing hears the nudge before compose.
+- The nudge names a missing parent folder only when it is missing.
+- With the file present, nothing changes.
+
+**F33 result:**
+- Both repeat branches give one step with the goal nudge (after F17). The nudge names a missing parent folder and says to open a closed editor first.
+- Tests: a loop test with the T9 shape (repeats with `~/d` missing: the model hears "The folder ~/d does not exist yet"; with the file present there is no nudge), plus unit cases.
+- Three mutants, all watched to fail: F33 off; the folder never named; nudging when the file is there.
+- Full suite 2107 passed, 0 failed.
+- Not measured yet: whether the model then does the steps. That is for the next hard-set run.

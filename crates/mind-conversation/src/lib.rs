@@ -13268,7 +13268,8 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                     if !goal_nudged {
                         goal_nudged = true;
                         eprintln!("[agent] step {step}: answering with {path} still missing \u{2014} asking for it");
-                        scratch.push_str(&desktop::goal_nudge(step, &path));
+                        let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
+                        scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
                         continue;
                     }
                     a = format!("{a}\n\n{}", desktop::goal_missing_note(&path));
@@ -13483,6 +13484,18 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                         scratch.push_str(&desktop::unsaved_nudge(step));
                         continue;
                     }
+                    // E.ARENA1-F33: nor with the file the request asked for still missing -- say
+                    // what is missing, and what blocks it, once, instead of composing.
+                    if !unsaved_doc && !goal_nudged {
+                        if let Some(path) = self.missing_goal(user_text) {
+                            goal_nudged = true;
+                            barren = 0;
+                            eprintln!("[agent] step {step}: repeats would end the turn with {path} missing \u{2014} saying so");
+                            let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
+                            scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
+                            continue;
+                        }
+                    }
                     break;
                 }
                 continue;
@@ -13509,6 +13522,18 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                         barren = 0;
                         scratch.push_str(&desktop::unsaved_nudge(step));
                         continue;
+                    }
+                    // E.ARENA1-F33: nor with the file the request asked for still missing -- say
+                    // what is missing, and what blocks it, once, instead of composing.
+                    if !unsaved_doc && !goal_nudged {
+                        if let Some(path) = self.missing_goal(user_text) {
+                            goal_nudged = true;
+                            barren = 0;
+                            eprintln!("[agent] step {step}: repeats would end the turn with {path} missing \u{2014} saying so");
+                            let folder = desktop::missing_folder_of(&path, self.person_home().as_deref());
+                            scratch.push_str(&desktop::goal_nudge(step, &path, folder.as_deref()));
+                            continue;
+                        }
                     }
                     break;
                 }

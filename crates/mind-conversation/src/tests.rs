@@ -17219,6 +17219,36 @@ mod desktop_consent_and_stall_wiring {
         assert!(r.prompts.iter().any(|p| p.contains(&format!("home folder on this computer is {}", person.to_string_lossy()))), "the model was told the wrong home");
     }
 
+    /// E.ARENA1-F33, the hard smoke's T9 shape: the model repeats a call, the repeat guard would
+    /// compose, the requested file and its folder are missing -- the model is told, before compose.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn repeats_do_not_end_a_turn_whose_file_is_missing() {
+        let home = fresh_home("f33");
+        let go = || Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "shell", "action": "files_go", "args": {"path": "/home/yantrik"}}));
+        let r = run_at(
+            "Save a text file at ~/d/notes.txt containing exactly this line: kept safe",
+            Some(home.to_string_lossy().into_owned()),
+            vec![go(), go(), go(), go(), go()],
+            vec![SHELL, SHELL, SHELL],
+            vec!["Done \u{2014} Yantrik \u{2014} files screen, 1 windows open\naccepted: True, settled: True"],
+        )
+        .await;
+        let nudged = r.prompts.iter().position(|p| p.contains("The folder ~/d does not exist yet"));
+        assert!(nudged.is_some(), "the model was never told what was missing");
+        std::fs::create_dir_all(home.join("d")).unwrap();
+        std::fs::write(home.join("d").join("notes.txt"), "kept safe\n").unwrap();
+        let there = run_at(
+            "Save a text file at ~/d/notes.txt containing exactly this line: kept safe",
+            Some(home.to_string_lossy().into_owned()),
+            vec![go(), go(), go(), go(), go()],
+            vec![SHELL, SHELL, SHELL],
+            vec!["Done \u{2014} Yantrik \u{2014} files screen, 1 windows open\naccepted: True, settled: True"],
+        )
+        .await;
+        let _ = std::fs::remove_dir_all(&home);
+        assert!(!there.prompts.iter().any(|p| p.contains("nothing is at ~/d/notes.txt yet")), "nudged although the file is there");
+    }
+
     /// F21's kill criteria: a file that is there, a request that names no path, a delete, and a
     /// document F12 already says is unsaved -- none of them hears F21.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
