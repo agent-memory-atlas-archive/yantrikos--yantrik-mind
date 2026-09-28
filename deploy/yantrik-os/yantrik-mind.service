@@ -24,6 +24,11 @@ Environment=YM_MEMORY_SERVER=127.0.0.1:7440
 # The dashboards server listens on every network interface. A desktop should not, unless its
 # owner turns it on in the settings file.
 Environment=YM_WEB=off
+# The browser chat client (pairing-code registration on 127.0.0.1:8090) is a second way to talk to
+# this mind as its owner. On a desktop the desktop is the surface; and once minds share one account
+# (yantrik-os #411) any of them could read the pairing code and chat as the person. Off unless its
+# owner turns it on.
+Environment=YM_WEBUI=off
 EnvironmentFile=-%h/.config/yantrik-mind.env
 ExecStartPre=/usr/bin/mkdir -p %h/.local/share/yantrik-mind %h/.config
 ExecStart=/opt/yantrik-mind/bin/yantrik-mind
