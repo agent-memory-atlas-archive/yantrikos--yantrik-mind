@@ -10313,3 +10313,11 @@ The device store and console token stay in the database's folder first, exactly 
 - M1, the literal put back in `surface.rs`: caught by the scan.
 - M2, `STATE_DIRECTORY` ignored: caught.
 - M3, the `:memory:` check removed: **survived, as an equivalent mutant.** `Path::new(":memory:").parent()` is empty, and the empty-folder filter already refuses it. The check stays as the stated intent.
+
+**E.ROOT1 on staging** (d665c29, .95, `STATE_DIRECTORY=/var/lib/yantrik-mind`, `YM_DB` inside it):
+- The start line reads `state: /var/lib/yantrik-mind`.
+- A console turn answered, through the console token in the same folder as before.
+- `tokens` read the same `token_ledger.log`.
+- No process-private folder was created.
+
+**Not exercised:** the `provider_usage.json` rollup. Its newest entry is dated 2026-09-07, so no route on staging has written it for three weeks, before and after this change.
