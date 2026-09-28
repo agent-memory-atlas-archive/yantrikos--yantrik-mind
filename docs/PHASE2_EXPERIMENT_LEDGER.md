@@ -10912,3 +10912,26 @@ yantrik-os #478 (merged as bbab102, reaching 520 in the next nightly) adds `os_s
 **Kill criterion:** after an act, the `os_screen` entry is gone from the done set, and a non-desktop read is kept.
 
 **E.ARENA1-F38 — RESULT:** `a_screen_read_is_forgotten_after_an_act` holds. It was watched to fail on the old three-entry list. Full suite: 2148 passed, 0 failed. Installed on 520 together with #478's nightly, as one restart.
+
+## E.ARENA1-F39 — PREREG: a read that arrives as an act is still a read
+
+yantrik-os-f4's next shell build adds `shell.read_mind_view` (safe) and `shell.read_screen` (sensitive, a card). Both are OCR of windows with no element tree, and both are reached through `os_act`. The loop treats every `os_act` as a **change**, so three things would go wrong:
+1. F6 forgets desktop reads by tool name, and these arrive as `os_act`, so a second read after an act would be answered from the work log. That's the stale case F38 closed for `os_screen`.
+2. F26 records every successful act as a change made, so a second identical read would be refused as "that change is already made".
+3. Each read would itself make every other desktop read stale.
+
+**F39:**
+- `os_act` on `shell` with `read_screen` or `read_mind_view` is a **read act**.
+- It's forgotten after a real act, the same as F6's reads.
+- It isn't recorded as a change (F26), and it doesn't make other reads stale.
+
+**Kill criteria:**
+- After a real act, a read act's entry is gone from the done set, and an ordinary act's stays.
+- A read act doesn't count as a desktop change.
+- An unknown shell action is still a change.
+
+**E.ARENA1-F39 — RESULT: built, and every kill criterion held.** Full suite: 2150 passed, 0 failed.
+- `a_read_that_arrives_as_an_act_is_still_a_read` (unit): read acts are recognised, a change and an unknown shell action are not, and after a real act the read act's entry is gone while the change's stays.
+- `reading_the_screen_changes_nothing` (loop): a describe, then `read_screen`, then a describe gives one describe sent. With a real act in between, the second is sent.
+- Mutant M1 (a read act makes reads stale) was watched to fail.
+- **Not yet on 520:** it waits for yantrik-os-f4's shell build with `read_screen` / `read_mind_view`, to ride that restart.

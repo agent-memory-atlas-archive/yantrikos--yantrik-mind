@@ -17579,6 +17579,20 @@ mod desktop_consent_and_stall_wiring {
         assert_eq!(last.matches("it said it was still loading").count(), 1, "a loading app was looked at again twice in one turn");
     }
 
+    /// E.ARENA1-F39: reading the screen through `os_act shell.read_screen` changes nothing -- the
+    /// editor described before it is not re-described after it; after a REAL act it is.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn reading_the_screen_changes_nothing() {
+        let d = || Step::Call("mcp.yantrik-os.os_describe", serde_json::json!({"app": "editor"}));
+        let read = || Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "shell", "action": "read_screen"}));
+        let looks = |r: &Run| r.reached.iter().filter(|(t, _)| t.ends_with("os_describe")).count();
+        let r = run_with("What does the screen say?", vec![d(), read(), d()], vec![SHELL, SHELL, SHELL], vec!["Screen: 3 lines read"]).await;
+        assert_eq!(looks(&r), 1, "a screen reading made the editor's description stale");
+        let new = Step::Call("mcp.yantrik-os.os_act", serde_json::json!({"app": "editor", "action": "new", "args": {"text": "x"}}));
+        let r = run_with("What does the screen say?", vec![d(), new, d()], vec![SHELL, SHELL, SHELL, SHELL], vec!["Done \u{2014} Text Editor \u{2014} Untitled"]).await;
+        assert!(looks(&r) >= 2, "a real act did not make the description stale");
+    }
+
     /// E.CARDS1: every sent call opens a card and closes it with the loop's verdict; an unsent repeat
     /// opens none; a credential in the args never reaches a card; a big text is a preview.
     #[tokio::test(flavor = "multi_thread", worker_threads = 2)]

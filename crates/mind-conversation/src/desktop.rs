@@ -326,7 +326,25 @@ const DESKTOP_READS: [&str; 4] = [
 /// stay remembered — repeating the same `new` must not open a second tab — only reads are forgotten.
 /// `done` holds the loop's `tool|args` call signatures.
 pub(crate) fn forget_desktop_reads(done: &mut std::collections::HashSet<String>) {
-    done.retain(|sig| !DESKTOP_READS.iter().any(|r| sig.starts_with(&format!("{r}|"))));
+    done.retain(|sig| {
+        !DESKTOP_READS.iter().any(|r| sig.starts_with(&format!("{r}|"))) && !read_act_sig(sig)
+    });
+}
+
+/// E.ARENA1-F39: shell actions that READ the screen (OCR of windows with no element tree) but
+/// arrive as an act.
+const READ_ACTS: [&str; 2] = ["read_screen", "read_mind_view"];
+
+/// E.ARENA1-F39: an act that only reads -- not a change, and stale after a real one.
+pub(crate) fn is_read_act(tool: &str, args: &serde_json::Value) -> bool {
+    act_target(tool, args).is_some_and(|(app, action)| app == TWIN_HOST && READ_ACTS.contains(&action.as_str()))
+}
+
+fn read_act_sig(sig: &str) -> bool {
+    sig.split_once('|')
+        .filter(|(tool, _)| *tool == ACT)
+        .and_then(|(tool, args)| serde_json::from_str::<serde_json::Value>(args).ok().map(|a| is_read_act(tool, &a)))
+        .unwrap_or(false)
 }
 
 /// The call that changes the desktop.
@@ -1659,6 +1677,23 @@ mod tests {
         forget_desktop_reads(&mut done);
         assert!(!done.contains("mcp.yantrik-os.os_screen|{}"), "the pre-act screen would be served again");
         assert!(done.contains("web_search|{\"q\":\"x\"}"), "a non-desktop read was forgotten");
+    }
+
+    /// E.ARENA1-F39: an OCR read reached through `os_act` is a read -- stale after a real act,
+    /// never a change of its own.
+    #[test]
+    fn a_read_that_arrives_as_an_act_is_still_a_read() {
+        let read = serde_json::json!({"app": "shell", "action": "read_screen"});
+        let change = serde_json::json!({"app": "editor", "action": "new", "args": {"text": "x"}});
+        let odd = serde_json::json!({"app": "shell", "action": "open_app", "args": {"name": "editor"}});
+        assert!(is_read_act(ACT, &read) && is_read_act(ACT, &serde_json::json!({"app": "shell", "action": "read_mind_view"})));
+        assert!(!is_read_act(ACT, &change) && !is_read_act(ACT, &odd), "a change is not a read");
+        assert!(!is_read_act(DESCRIBE, &read), "only an act can be a read act");
+        let mut done: std::collections::HashSet<String> =
+            [format!("{ACT}|{read}"), format!("{ACT}|{change}")].into_iter().collect();
+        forget_desktop_reads(&mut done);
+        assert!(!done.contains(&format!("{ACT}|{read}")), "the pre-act screen reading would be served again");
+        assert!(done.contains(&format!("{ACT}|{change}")), "a change was forgotten -- it could be made twice");
     }
 
     #[test]

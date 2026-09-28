@@ -13721,7 +13721,8 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             }
             // E.ARENA1-F6: an action on the desktop makes every earlier desktop read stale, so a
             // read after it must really run rather than be served the pre-action answer.
-            if desktop::changes_the_desktop(&tool) {
+            // E.ARENA1-F39: a read that arrives as an act changes nothing.
+            if desktop::changes_the_desktop(&tool) && !desktop::is_read_act(&tool, &args) {
                 desktop::forget_desktop_reads(&mut done_calls);
             }
             last_call = call_sig.clone();
@@ -13912,7 +13913,7 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             if desktop::retry_after_failure(&tool, ran) {
                 done_calls.remove(&call_sig);
             }
-            if sent && ran && tool == desktop::ACT {
+            if sent && ran && tool == desktop::ACT && !desktop::is_read_act(&tool, &args) {
                 made.push((args.clone(), obs.lines().next().unwrap_or("").to_string()));
             }
             // E.ARENA1-F36: what the app now is, and what this act left it as.
