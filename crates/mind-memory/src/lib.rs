@@ -95,6 +95,8 @@ enum Cmd {
         evidence_version: Option<u64>,
         /// E.MEMSCOPE1: the scope a NEW belief is tagged with, in this same command.
         scope: Option<String>,
+        /// E.STAMP1: who is asserting, as the server knows it. None = this Mind's own turn.
+        written_by: Option<WrittenBy>,
         reply: Reply<Belief>,
     },
     RecallTyped {
@@ -383,6 +385,11 @@ enum Cmd {
     // inside a scoped AssertBelief (E.MEMSCOPE1) -- there is no command that re-scopes a belief.
     BeliefScopeMap {
         reply: Reply<std::collections::HashMap<String, String>>,
+    },
+    /// E.STAMP1: who contributed evidence to one belief.
+    BeliefAuthors {
+        statement: String,
+        reply: Reply<Vec<BeliefAuthor>>,
     },
     // Purpose Gate v1: explicit per-belief sensitivity overrides + standing purpose grants
     SetBeliefSensitivity {
@@ -797,9 +804,35 @@ fn record_memory(db: &YantrikDB, spec: RecordSpec<'_>) -> std::result::Result<St
     }
 }
 
+/// E.STAMP1 (yantrik-os #447, D4): who wrote a record, as the SERVER knows it -- never as the
+/// caller says. `mind` is a stable id, not a display name; `via` is how it reached the store
+/// ("mcp", or "self" for this Mind's own turns).
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct WrittenBy {
+    pub mind: String,
+    pub via: String,
+}
+
+impl WrittenBy {
+    /// This Mind, writing from its own turns.
+    pub fn this_mind() -> Self {
+        Self { mind: "yantrik-mind".into(), via: "self".into() }
+    }
+    /// Any holder of the machine's one memory token -- the only identity there is until the desktop
+    /// mints per-mind credentials (#447 item 3).
+    pub fn machine_token() -> Self {
+        Self { mind: "machine-token".into(), via: "mcp".into() }
+    }
+}
+
+/// E.STAMP1: the metadata key the server stamps a flat memory's author under. A caller may not set it.
+pub const WRITTEN_BY_KEY: &str = "ym_written_by";
+
 /// A flat memory to write, with the engine's full record shape.
 #[derive(Debug, Clone)]
 pub struct MemoryWrite {
+    /// E.STAMP1: set by the server from who is calling, never from the request.
+    pub written_by: WrittenBy,
     pub text: String,
     pub memory_type: String,
     pub importance: f64,
@@ -846,6 +879,15 @@ fn record_memory_meta(spec: &MemoryWrite) -> std::result::Result<serde_json::Val
         _ => return Err("memory metadata must be an object".into()),
     };
     meta.entry("source").or_insert_with(|| serde_json::Value::String(spec.source.clone()));
+    // E.STAMP1: the author is the server's word, in the same record -- a caller that tries to
+    // say it is refused, not silently overwritten, so it learns the field is not its to set.
+    if meta.contains_key(WRITTEN_BY_KEY) {
+        return Err(format!("`{WRITTEN_BY_KEY}` is set by the memory server, not by the caller"));
+    }
+    meta.insert(
+        WRITTEN_BY_KEY.into(),
+        serde_json::json!({ "mind": spec.written_by.mind, "via": spec.written_by.via, "at": now_secs().floor() as i64 }),
+    );
     let meta = serde_json::Value::Object(meta);
     let size = meta.to_string().len();
     if size > MAX_MEMORY_METADATA_BYTES {
@@ -3400,6 +3442,72 @@ fn ensure_belief_scope_table(db: &YantrikDB) {
     );
 }
 
+/// E.STAMP1: who contributed evidence to each belief, as the server knew them, keyed by the
+/// belief's canonical proposition. Evidence with no row here came before stamping.
+fn ensure_belief_authors_table(db: &YantrikDB) {
+    let _ = db.conn().execute(
+        "CREATE TABLE IF NOT EXISTS mind_belief_authors (proposition TEXT NOT NULL, mind TEXT NOT NULL, \
+         via TEXT NOT NULL, first_at INTEGER NOT NULL, last_at INTEGER NOT NULL, evidence INTEGER NOT NULL, \
+         PRIMARY KEY (proposition, mind, via))",
+        [],
+    );
+}
+
+fn stamp_belief_author(db: &YantrikDB, proposition: &str, by: &WrittenBy) -> std::result::Result<(), String> {
+    let now = now_secs().floor() as i64;
+    db.conn()
+        .execute(
+            "INSERT INTO mind_belief_authors (proposition, mind, via, first_at, last_at, evidence) \
+             VALUES (?1, ?2, ?3, ?4, ?4, 1) ON CONFLICT(proposition, mind, via) \
+             DO UPDATE SET last_at = excluded.last_at, evidence = evidence + 1",
+            rusqlite::params![proposition, by.mind, by.via, now],
+        )
+        .map(|_| ())
+        .map_err(|e| e.to_string())
+}
+
+/// One contributor to a belief (E.STAMP1).
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
+pub struct BeliefAuthor {
+    pub mind: String,
+    pub via: String,
+    pub first_at: i64,
+    pub last_at: i64,
+    pub evidence: u64,
+}
+
+fn belief_authors(db: &YantrikDB, statement: &str) -> std::result::Result<Vec<BeliefAuthor>, String> {
+    let canonical = find_belief(db, &normalize_belief_text(statement))
+        .and_then(|n| node_prop(&n).map(str::to_string))
+        .unwrap_or_else(|| normalize_belief_text(statement));
+    let conn = db.conn();
+    let mut stmt = conn
+        .prepare(
+            "SELECT mind, via, first_at, last_at, evidence FROM mind_belief_authors \
+             WHERE proposition = ?1 ORDER BY first_at, mind",
+        )
+        .map_err(|e| e.to_string())?;
+    let rows = stmt
+        .query_map([&canonical], |r| {
+            Ok(BeliefAuthor {
+                mind: r.get(0)?,
+                via: r.get(1)?,
+                first_at: r.get(2)?,
+                last_at: r.get(3)?,
+                evidence: r.get::<_, i64>(4)?.max(0) as u64,
+            })
+        })
+        .map_err(|e| e.to_string())?;
+    rows.collect::<std::result::Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// E.STAMP1: the evidence version of the belief `statement` would land on, before it is asserted.
+fn evidence_version_of(db: &YantrikDB, statement: &str) -> Option<u64> {
+    let canonical = find_belief(db, &normalize_belief_text(statement))
+        .and_then(|n| node_prop(&n).map(str::to_string))?;
+    get_belief_evidence_version(db, &canonical)
+}
+
 fn set_belief_scope(
     db: &YantrikDB,
     proposition: &str,
@@ -4587,6 +4695,7 @@ impl MemoryHandle {
                 ensure_goals_prefs_table(&db);
                 ensure_tensions_table(&db);
                 ensure_belief_scope_table(&db);
+                ensure_belief_authors_table(&db);
                 ensure_belief_evidence_version_table(&db);
                 ensure_purpose_tables(&db);
                 ensure_tombstone_table(&db);
@@ -4689,11 +4798,23 @@ impl MemoryHandle {
                             let r = db.get(&rid).map(|o| o.map(|m| m.text)).map_err(|e| e.to_string());
                             let _ = reply.send(r);
                         }
-                        Cmd::AssertBelief { statement, signed_weight, source, provenance, evidence_version, scope, reply } => {
+                        Cmd::AssertBelief { statement, signed_weight, source, provenance, evidence_version, scope, written_by, reply } => {
+                            let before = evidence_version_of(&db, &statement);
                             let result = match &scope {
                                 Some(scope) => assert_belief_scoped(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version, scope),
                                 None => assert_belief(&db, &mut alloc, &statement, signed_weight, &source, &provenance, evidence_version),
                             };
+                            // E.STAMP1: only evidence that was applied is stamped (a stale versioned
+                            // update is dropped and returns Ok). A stamp that fails leaves the
+                            // evidence unattributed -- which only ever takes rights away -- and says so.
+                            if let Ok(b) = &result {
+                                if get_belief_evidence_version(&db, &b.statement) != before {
+                                    let by = written_by.unwrap_or_else(WrittenBy::this_mind);
+                                    if let Err(e) = stamp_belief_author(&db, &b.statement, &by) {
+                                        eprintln!("[memory] evidence on a belief left unattributed ({}/{}): {e}", by.mind, by.via);
+                                    }
+                                }
+                            }
                             if result.is_ok() {
                                 let now = std::time::SystemTime::now()
                                     .duration_since(std::time::UNIX_EPOCH)
@@ -5019,6 +5140,9 @@ impl MemoryHandle {
                         }
                         Cmd::SetProfile { key, value, reply } => {
                             let _ = reply.send(set_profile(&db, &key, &value));
+                        }
+                        Cmd::BeliefAuthors { statement, reply } => {
+                            let _ = reply.send(belief_authors(&db, &statement));
                         }
                         Cmd::BeliefScopeMap { reply } => {
                             let _ = reply.send(belief_scope_map(&db));
@@ -5494,6 +5618,31 @@ impl MemoryHandle {
     }
 
     /// Tombstone a flat memory by record id. The row is kept; it stops being recalled.
+    /// E.STAMP1: assert a belief as a caller the server has identified -- the MCP path. This Mind's
+    /// own turns use `remember_as_belief`, which stamps them as this Mind.
+    pub async fn remember_as_belief_by(&self, a: BeliefAssertion, by: WrittenBy) -> Result<Belief> {
+        let signed_weight = a.polarity * a.weight.abs();
+        let (statement, source, provenance) = (a.statement, a.source_event.unwrap_or_default(), a.provenance);
+        self.call(|reply| Cmd::AssertBelief {
+            statement,
+            signed_weight,
+            source,
+            provenance,
+            evidence_version: None,
+            scope: None,
+            written_by: Some(by),
+            reply,
+        })
+        .await
+    }
+
+    /// E.STAMP1: who contributed evidence to a belief, oldest first. Evidence with no author came
+    /// before stamping.
+    pub async fn belief_authors(&self, statement: &str) -> Result<Vec<BeliefAuthor>> {
+        let statement = statement.to_string();
+        self.call(|reply| Cmd::BeliefAuthors { statement, reply }).await
+    }
+
     pub async fn forget_memory(&self, rid: &str) -> Result<bool> {
         let rid = rid.to_string();
         self.call(|reply| Cmd::ForgetMemory { rid, reply }).await
@@ -5648,6 +5797,7 @@ impl MemoryFacade for MemoryHandle {
             provenance,
             evidence_version: None,
             scope: None,
+            written_by: None,
             reply,
         })
         .await
@@ -5671,6 +5821,7 @@ impl MemoryFacade for MemoryHandle {
             provenance,
             evidence_version: Some(evidence_version),
             scope: None,
+            written_by: None,
             reply,
         })
         .await
@@ -5697,6 +5848,7 @@ impl MemoryFacade for MemoryHandle {
             provenance,
             evidence_version: None,
             scope: Some(scope.as_tag()),
+            written_by: None,
             reply,
         })
         .await
@@ -6728,6 +6880,7 @@ mod tests {
 
     fn memory_write(metadata: serde_json::Value) -> MemoryWrite {
         MemoryWrite {
+            written_by: WrittenBy::machine_token(),
             text: "The person keeps their bike in the garage".into(),
             memory_type: "semantic".into(),
             importance: 0.5,

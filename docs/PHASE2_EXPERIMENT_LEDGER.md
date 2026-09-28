@@ -10224,3 +10224,40 @@ Each mutation was watched to fail its own test:
 - dropping the cleanup fails the stand-or-fall test.
 
 The `SetBeliefScope` command is removed, so nothing re-scopes a belief any more. Full suite: 2112 passed, 0 failed.
+
+## E.STAMP1 — PREREG: the server says who wrote what; the caller only claims it
+
+yantrik-os #447, Phase 1 item (2), D4. Today a flat memory's `source` and a belief's evidence `source` are whatever the caller sends, so nothing the store holds says which mind wrote it. The plan is posted on #447 (comment 5873888282).
+
+**E.STAMP1:**
+- **Flat memories** (only the MCP server writes them): the server stamps `ym_written_by: {mind, via, at}` into the record's metadata, in the same write. Caller metadata that sets that key is refused. Recall shows `written_by`, or `"before stamping"` for older records. The caller's `source` stays, as what the writer *said*.
+- **Beliefs:** the table `mind_belief_authors(proposition, mind, via, first_at, last_at, evidence)` is written in the same engine command as the evidence. An MCP assertion is stamped as its caller. The Mind's own in-process assertion is stamped `{mind: "yantrik-mind", via: "self"}`.
+- `explain` lists the contributors, plus how much evidence has no stamp.
+- **Until credentials exist (item 3)** the MCP caller is `{mind: "machine-token", via: "mcp"}`.
+
+**A belief's stamp is written after its evidence.** A stamp that fails leaves that evidence unattributed and is logged. A missing stamp can only take rights away, because D3's "forget own records" needs *all* of a belief's evidence to be the caller's. A stale versioned update that is dropped is not stamped.
+
+**Kill criteria:**
+- A memory written through the server recalls with `written_by` `{machine-token, mcp}`.
+- A caller's `ym_written_by` is refused.
+- An older record reads "before stamping".
+- A belief asserted through the server and then by the Mind lists two contributors with their evidence counts.
+- A stale versioned update adds no stamp.
+
+**E.STAMP1 — RESULT: built, and every kill criterion held** (tests in `mind-memory-mcp/src/server.rs`):
+- `a_memory_says_who_wrote_it_and_the_caller_cannot`: `written_by` = {machine-token, mcp}, the writer's `source` is kept, the stamp stays out of the caller's metadata, a caller's `ym_written_by` is refused, and an old record reads "before stamping".
+- `a_belief_lists_who_put_its_evidence_there`: {machine-token: 1, yantrik-mind: 1}, with 0 unattributed.
+- `a_dropped_update_is_not_stamped`: a stale versioned update adds no stamp.
+
+Five mutants, each watched to fail its own test:
+- M1: the caller may set its author.
+- M2: no stamp.
+- M3: the stamp is left in the metadata.
+- M4: a dropped update is stamped.
+- M5: an MCP belief is stamped as the Mind.
+
+**The harness slipped once.** The first pass restored files with an older mtime, so cargo kept the mutant build, and M3/M5 ran with the previous mutant compiled in. They were rerun with the restore touched, and the clean tree was re-checked green.
+
+**Deviation from the #447 plan:** recall keeps the field name `source` (the writer's word) rather than renaming it `claimed_source`. The server's word is `written_by`. Renaming would break every client that reads `source` today.
+
+Full suite: 2115 passed, 0 failed.

@@ -9,7 +9,7 @@
 //! `recall` returns both at once, labelled, because a mind asking what it knows about something
 //! should not have to know which half the answer was filed under.
 
-use mind_memory::{MemoryHandle, MemoryHit, MemoryWrite};
+use mind_memory::{MemoryHandle, MemoryHit, MemoryWrite, WrittenBy, WRITTEN_BY_KEY};
 use mind_types::{AccessContext, Belief, BeliefAssertion, MemoryFacade, RecallQuery};
 use rmcp::handler::server::router::tool::ToolRouter;
 use rmcp::handler::server::wrapper::Parameters;
@@ -46,6 +46,13 @@ fn belief_json(b: &Belief) -> Value {
 }
 
 fn memory_json(m: &MemoryHit) -> Value {
+    // E.STAMP1: who wrote it, as the server stamped it -- shown on its own, and taken out of the
+    // caller's metadata so the two are never confused. `source` stays what the writer said.
+    let mut metadata = m.metadata.clone();
+    let written_by = metadata
+        .as_object_mut()
+        .and_then(|o| o.remove(WRITTEN_BY_KEY))
+        .unwrap_or_else(|| json!("before stamping"));
     json!({
         "kind": "memory",
         "rid": m.rid,
@@ -57,7 +64,8 @@ fn memory_json(m: &MemoryHit) -> Value {
         "source": m.source,
         "created_at": m.created_at,
         "importance": m.importance,
-        "metadata": m.metadata,
+        "written_by": written_by,
+        "metadata": metadata,
         "why_retrieved": m.why_retrieved,
     })
 }
@@ -180,12 +188,15 @@ pub struct NoInput {}
 #[derive(Clone)]
 pub struct MemoryServer {
     mem: MemoryHandle,
+    /// E.STAMP1: who is calling, as the server knows it. Until the desktop mints per-mind
+    /// credentials (#447 item 3) that is only "whoever holds the machine token".
+    caller: WrittenBy,
     tool_router: ToolRouter<MemoryServer>,
 }
 
 impl MemoryServer {
     pub fn new(mem: MemoryHandle) -> Self {
-        Self { mem, tool_router: Self::tool_router() }
+        Self { mem, caller: WrittenBy::machine_token(), tool_router: Self::tool_router() }
     }
 }
 
@@ -196,6 +207,7 @@ impl MemoryServer {
         let rid = self
             .mem
             .remember_memory(MemoryWrite {
+                written_by: self.caller.clone(),
                 text: i.text,
                 memory_type: i.memory_type,
                 importance: i.importance.clamp(0.0, 1.0),
@@ -286,13 +298,16 @@ impl MemoryServer {
         };
         let belief = self
             .mem
-            .remember_as_belief(BeliefAssertion {
-                statement: i.statement,
-                polarity,
-                weight: i.strength.clamp(0.0, 6.0),
-                source_event: i.source,
-                provenance: i.provenance,
-            })
+            .remember_as_belief_by(
+                BeliefAssertion {
+                    statement: i.statement,
+                    polarity,
+                    weight: i.strength.clamp(0.0, 6.0),
+                    source_event: i.source,
+                    provenance: i.provenance,
+                },
+                self.caller.clone(),
+            )
             .await
             .map_err(|e| fail("believe", e))?;
         ok(belief_json(&belief))
@@ -311,15 +326,22 @@ impl MemoryServer {
     #[tool(description = "Show a belief with every piece of evidence behind it.")]
     async fn explain(&self, Parameters(i): Parameters<StatementInput>) -> Result<CallToolResult, McpError> {
         match self.mem.explain_belief(&i.statement, &owner()).await.map_err(|e| fail("explain", e))? {
-            Some((belief, evidence)) => ok(json!({
+            Some((belief, evidence)) => {
+                // E.STAMP1: who put the evidence there, and how much of it nobody stamped.
+                let authors = self.mem.belief_authors(&belief.statement).await.map_err(|e| fail("explain authors", e))?;
+                let stamped: u64 = authors.iter().map(|a| a.evidence).sum();
+                ok(json!({
                 "belief": belief_json(&belief),
+                "contributors": authors,
+                "unattributed_evidence": (evidence.len() as u64).saturating_sub(stamped),
                 "evidence": evidence.iter().map(|e| json!({
                     "weight": e.weight,
                     "polarity": e.polarity,
                     "source": e.source_event,
                     "excerpt": e.excerpt,
                 })).collect::<Vec<_>>(),
-            })),
+            }))
+            }
             None => ok(json!({ "found": false, "statement": i.statement })),
         }
     }
@@ -388,5 +410,100 @@ impl ServerHandler for MemoryServer {
                  - When the person corrects you, call `believe` with direction contradicts on the \
                  old statement, then `believe` the new one.",
             )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn text(r: CallToolResult) -> Value {
+        let t = &r.content[0].as_text().expect("a text result").text;
+        serde_json::from_str(t).unwrap()
+    }
+    fn input<T: serde::de::DeserializeOwned>(v: Value) -> Parameters<T> {
+        Parameters(serde_json::from_value(v).unwrap())
+    }
+
+    /// E.STAMP1: a memory written through the server says who wrote it, as the server knows it;
+    /// a caller cannot say it for itself; a record from before stamping says so.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_memory_says_who_wrote_it_and_the_caller_cannot() {
+        let s = MemoryServer::new(MemoryHandle::spawn(":memory:", 64).unwrap());
+        s.remember(input(json!({"text": "The bike is kept in the garage", "source": "hermes", "metadata": {"kind": "fact"}})))
+            .await
+            .unwrap();
+        let got = text(s.recall(input(json!({"query": "where is the bike kept", "include": "memories"}))).await.unwrap());
+        let m = &got["results"][0];
+        assert_eq!(m["written_by"]["mind"], "machine-token", "{m}");
+        assert_eq!(m["written_by"]["via"], "mcp", "{m}");
+        assert_eq!(m["source"], "hermes", "the writer's own word is kept");
+        assert!(m["metadata"].get(WRITTEN_BY_KEY).is_none(), "the stamp leaked into the caller's metadata: {m}");
+
+        let forged = s
+            .remember(input(json!({"text": "Forged", "metadata": {WRITTEN_BY_KEY: {"mind": "yantrik-mind", "via": "self"}}})))
+            .await;
+        assert!(forged.is_err(), "a caller set its own author");
+
+        let old = MemoryHit {
+            rid: "r".into(),
+            text: "t".into(),
+            score: 0.0,
+            memory_type: "semantic".into(),
+            namespace: "default".into(),
+            domain: "general".into(),
+            source: "mcp".into(),
+            created_at: 0.0,
+            importance: 0.5,
+            metadata: json!({"source": "mcp"}),
+            why_retrieved: vec![],
+        };
+        assert_eq!(memory_json(&old)["written_by"], "before stamping");
+    }
+
+    /// E.STAMP1: a belief lists who put its evidence there -- a client through the server, and
+    /// the Mind in its own turns -- with nothing unattributed.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_belief_lists_who_put_its_evidence_there() {
+        let mem = MemoryHandle::spawn(":memory:", 64).unwrap();
+        let s = MemoryServer::new(mem.clone());
+        let said = "The person prefers tea in the morning";
+        s.believe(input(json!({"statement": said, "source": "hermes"}))).await.unwrap();
+        mem.remember_as_belief(BeliefAssertion {
+            statement: said.into(),
+            polarity: 1.0,
+            weight: 1.0,
+            source_event: None,
+            provenance: "told".into(),
+        })
+        .await
+        .unwrap();
+        let got = text(s.explain(input(json!({"statement": said}))).await.unwrap());
+        let who: Vec<(String, u64)> = got["contributors"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|a| (a["mind"].as_str().unwrap().to_string(), a["evidence"].as_u64().unwrap()))
+            .collect();
+        assert_eq!(who, vec![("machine-token".to_string(), 1), ("yantrik-mind".to_string(), 1)], "{got}");
+        assert_eq!(got["unattributed_evidence"], 0, "{got}");
+    }
+
+    /// E.STAMP1: a stale versioned update is dropped, and adds no stamp.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn a_dropped_update_is_not_stamped() {
+        let mem = MemoryHandle::spawn(":memory:", 64).unwrap();
+        let a = || BeliefAssertion {
+            statement: "The printer is on the second floor".into(),
+            polarity: 1.0,
+            weight: 1.0,
+            source_event: None,
+            provenance: "told".into(),
+        };
+        mem.remember_as_belief_versioned(a(), 5).await.unwrap();
+        mem.remember_as_belief_versioned(a(), 3).await.unwrap();
+        let authors = mem.belief_authors("The printer is on the second floor").await.unwrap();
+        assert_eq!(authors.len(), 1);
+        assert_eq!(authors[0].evidence, 1, "the dropped update was stamped: {authors:?}");
     }
 }
