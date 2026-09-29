@@ -16720,6 +16720,56 @@ mod desktop_consent_and_stall_wiring {
         Run { reply, prompts, timeouts, reached: hub.scripted_calls() }
     }
 
+    /// E.ARENA1-F41: a scripted desktop that also offers the browser's `web_*` tools (yantrik-os #480),
+    /// each with its own replies.
+    async fn run_web(prompt: &str, steps: Vec<Step>, web: Vec<(&str, Vec<&str>)>) -> Run {
+        let seen = Arc::new(StdMutex::new(Vec::new()));
+        let timeouts = Arc::new(StdMutex::new(Vec::new()));
+        let script: Arc<dyn LLMBackend> = Arc::new(Script { at: AtomicUsize::new(0), steps, seen: seen.clone(), timeouts: timeouts.clone() });
+        let pool = InferencePool::new(Arc::clone(&script), 1).with_provider("script").with_private_backend(script, "script");
+        let hub = Arc::new(mind_tools::McpHub::new());
+        let tool = |name: &str| mind_tools::McpTool {
+            server: "yantrik-os".into(),
+            name: name.into(),
+            description: format!("{name} on this computer"),
+            read_only: true,
+            open_world: false,
+            destructive: false,
+            input_schema: serde_json::json!({"type": "object"}),
+        };
+        for (name, replies) in web {
+            hub.add_scripted_tool(tool(name), replies.into_iter().map(|s| Ok(s.to_string())).collect()).unwrap();
+        }
+        let conv = ConversationEngine::new(Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap()) as Arc<dyn MemoryFacade>, pool, "YM")
+            .with_mcp(hub.clone());
+        let reply = conv.agent_loop_for_eval(prompt, &TurnIdentity::primary()).await.unwrap_or_else(|e| format!("ERR {e}"));
+        let prompts = seen.lock().unwrap().clone();
+        let timeouts = timeouts.lock().unwrap().clone();
+        Run { reply, prompts, timeouts, reached: hub.scripted_calls() }
+    }
+
+    /// E.ARENA1-F41 (yantrik-os #480), through the loop: a page read after a click is really read
+    /// again, and "scroll, read, scroll" sends both scrolls.
+    #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+    async fn the_browser_is_read_again_after_it_changes() {
+        let count = |r: &Run, t: &str| r.reached.iter().filter(|(n, _)| n.ends_with(t)).count();
+        let r = run_web(
+            "Open the first result and tell me what it says",
+            vec![Step::Call("mcp.yantrik-os.web_read", serde_json::json!({})), Step::Call("mcp.yantrik-os.web_click", serde_json::json!({"ref": "e12"})), Step::Call("mcp.yantrik-os.web_read", serde_json::json!({}))],
+            vec![("web_read", vec!["--- page begins ---\nResults\n--- page ends ---", "--- page begins ---\nThe article\n--- page ends ---"]), ("web_click", vec!["navigated: The article"])],
+        )
+        .await;
+        assert_eq!(count(&r, "web_read"), 2, "the page after the click was served from before it");
+        let r = run_web(
+            "Read the whole page",
+            vec![Step::Call("mcp.yantrik-os.web_scroll", serde_json::json!({"direction": "down"})), Step::Call("mcp.yantrik-os.web_read", serde_json::json!({})), Step::Call("mcp.yantrik-os.web_scroll", serde_json::json!({"direction": "down"})), Step::Call("mcp.yantrik-os.web_read", serde_json::json!({}))],
+            vec![("web_scroll", vec!["scrolled", "scrolled"]), ("web_read", vec!["part one", "part two"])],
+        )
+        .await;
+        assert_eq!(count(&r, "web_scroll"), 2, "the second scroll was refused as a repeat");
+        assert_eq!(count(&r, "web_read"), 2, "the read after the second scroll was stale");
+    }
+
     fn act(app: &str, action: &str, text: &str) -> serde_json::Value {
         serde_json::json!({"app": app, "action": action, "args": {"text": text}})
     }

@@ -13728,7 +13728,11 @@ The answer travels inside a JSON string, so newlines and quotes must be         
                 desktop::forget_desktop_reads(&mut done_calls);
             }
             last_call = call_sig.clone();
-            done_calls.insert(call_sig.clone());
+            // E.ARENA1-F41: a scroll, wait, key press or back is meant to be repeated -- "scroll,
+            // read, scroll" pages a site; only the immediate identical repeat above is nudged.
+            if !desktop::repeatable(&tool) {
+                done_calls.insert(call_sig.clone());
+            }
             // What this step is about to run, with the arguments that survived the egress cleaner —
             // "using web_search…" does not distinguish a search for the user's own name from a
             // search for a stock ticker, and that difference is the whole reason to open the fold.

@@ -10961,3 +10961,39 @@ So `{"app": "App Shell", "action": "read_screen"}` reached the shell and met non
 - `reading_the_screen_changes_nothing` (loop, extended): the model's "App Shell" reaches the desktop as `shell` and counts as a read.
 - Mutant M1 (no fold in the loop) was watched to fail.
 - It rides 520's restart after yantrik-os #479's nightly, together with F39.
+
+## E.ARENA1-F41 — PREREG: the browser's reads and changes are told apart like the desktop's
+
+yantrik-os #480 (merged, reaching 520 with the next build) makes the browser an app (`app-browser`) behind the mind door. The yos-mcp `web_*` tools keep their names and go through it; there are new tools (`web_press`, `web_select`, `web_scroll`, `web_back`, `web_tabs`, `web_tab`, `web_wait`, `web_dialog`, `web_commit`); and `os_act browser <action>` reaches it directly. The loop's staleness rules know only `os_act` and three `os_*` reads, so:
+1. **A stale page after a web act.** After `web_click`, `web_type` or any other web change, a second `web_read`, `web_text` or `web_find` would be answered from the work log with the page from before. The same bug F6 fixed for describes.
+2. **Browser reads through `os_act`** (`read`, `find`, `text`, `tabs`, `media`) would count as changes: served stale after a real act, and making every other read stale (F39's case, for the browser).
+3. **Paging breaks.** `web_scroll`, `web_wait`, `web_press` and `web_back` are meant to be repeated ("scroll, read, scroll"). The repeat guard would refuse the second scroll as "already called".
+4. **A spelling.** yos-mcp treats `chromium` as the browser; the Mind's fold did not.
+
+**F41:**
+- The pure web reads (`web_read`, `web_text`, `web_find`, `web_tabs`, `web_listen`) join F6's desktop reads.
+- Every other `web_*` tool is a desktop change and makes reads stale.
+- `os_act browser` read/find/text/tabs/media are read acts, as F39's are.
+- `web_scroll`, `web_wait`, `web_press` and `web_back` aren't remembered by the repeat guard. They make reads stale, and they can run again; only an immediate identical repeat is still nudged.
+- F40's fold maps `chromium` to `browser`.
+
+**Kill criteria:**
+- After `web_click`, a `web_read` entry is gone from the done set.
+- After `web_read`, nothing else is forgotten.
+- `os_act browser text` is a read act, and `os_act browser click` isn't.
+- `web_scroll`, `web_read`, `web_scroll` sends both scrolls.
+- `chromium` folds to `browser`.
+
+**E.ARENA1-F41 — RESULT: built, and every kill criterion held.** Full suite: 2153 passed, 0 failed.
+- `the_browsers_reads_and_changes_are_told_apart` (unit):
+  - `web_click`, `web_type` and `web_scroll` are changes; `web_read` and `web_tabs` aren't;
+  - after a change, the `web_read` and `web_find` entries are gone and the click's stays;
+  - `os_act browser text` is a read act, and `browser click` isn't;
+  - `web_scroll` is repeatable and `web_click` isn't;
+  - `Chromium` and `app-browser` fold to `browser`.
+- `the_browser_is_read_again_after_it_changes` (loop, a scripted browser via the new `run_web` helper):
+  - read, click, read sends 2 reads;
+  - scroll, read, scroll, read sends 2 scrolls and 2 reads.
+- Mutants, each watched to fail: M1 (web changes don't make reads stale) and M2 (scrolls remembered).
+- **Known limit, passed to f4:** an *immediate* identical repeat, such as "Down" then "Down", is still nudged. I suggested a `count` argument on `web_press` / `web_scroll`.
+- It rides 520's restart for yantrik-os #480.

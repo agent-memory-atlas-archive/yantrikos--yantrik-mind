@@ -284,7 +284,34 @@ pub(crate) fn must_look_first(desktop: bool, tools_called: &[&str]) -> bool {
 /// E.ARENA1-F6: does this call change the desktop, so that what was read before it is no longer
 /// true?
 pub(crate) fn changes_the_desktop(tool: &str) -> bool {
-    tool == "mcp.yantrik-os.os_act"
+    // E.ARENA1-F41: every browser tool that is not a pure read changes what a read would see.
+    tool == "mcp.yantrik-os.os_act" || (tool.starts_with(WEB_PREFIX) && !PURE_WEB_READS.contains(&tool))
+}
+
+/// E.ARENA1-F41 (yantrik-os #480): the browser's tools on the desktop server.
+const WEB_PREFIX: &str = "mcp.yantrik-os.web_";
+
+/// E.ARENA1-F41: browser tools that only read -- stale after any change, like F6's reads.
+const PURE_WEB_READS: [&str; 5] = [
+    "mcp.yantrik-os.web_read",
+    "mcp.yantrik-os.web_text",
+    "mcp.yantrik-os.web_find",
+    "mcp.yantrik-os.web_tabs",
+    "mcp.yantrik-os.web_listen",
+];
+
+/// E.ARENA1-F41: browser tools meant to be repeated -- "scroll, read, scroll" pages a site. The
+/// repeat guard does not remember them; only an immediate identical repeat is still nudged.
+const REPEATABLE_WEB: [&str; 4] = [
+    "mcp.yantrik-os.web_scroll",
+    "mcp.yantrik-os.web_wait",
+    "mcp.yantrik-os.web_press",
+    "mcp.yantrik-os.web_back",
+];
+
+/// E.ARENA1-F41: may this call run again later in the turn, however often it already ran?
+pub(crate) fn repeatable(tool: &str) -> bool {
+    REPEATABLE_WEB.contains(&tool)
 }
 
 /// E.ARENA1-F6b: may a desktop action that just FAILED be tried again later this turn?
@@ -327,7 +354,8 @@ const DESKTOP_READS: [&str; 4] = [
 /// `done` holds the loop's `tool|args` call signatures.
 pub(crate) fn forget_desktop_reads(done: &mut std::collections::HashSet<String>) {
     done.retain(|sig| {
-        !DESKTOP_READS.iter().any(|r| sig.starts_with(&format!("{r}|"))) && !read_act_sig(sig)
+        !DESKTOP_READS.iter().chain(PURE_WEB_READS.iter()).any(|r| sig.starts_with(&format!("{r}|")))
+            && !read_act_sig(sig)
     });
 }
 
@@ -349,7 +377,12 @@ pub(crate) fn fold_app(name: &str) -> String {
             in_run = false;
         }
     }
-    out.strip_prefix("app-").map(str::to_string).unwrap_or(out)
+    let out = out.strip_prefix("app-").map(str::to_string).unwrap_or(out);
+    // E.ARENA1-F41: yos-mcp's alias for the browser app (yantrik-os #480).
+    if out == "chromium" {
+        return "browser".to_string();
+    }
+    out
 }
 
 /// E.ARENA1-F40: a desktop call with its `app` folded, so the Mind's rules and the desktop agree
@@ -371,8 +404,15 @@ const READ_ACTS: [&str; 2] = ["read_screen", "read_mind_view"];
 
 /// E.ARENA1-F39: an act that only reads -- not a change, and stale after a real one.
 pub(crate) fn is_read_act(tool: &str, args: &serde_json::Value) -> bool {
-    act_target(tool, args).is_some_and(|(app, action)| app == TWIN_HOST && READ_ACTS.contains(&action.as_str()))
+    act_target(tool, args).is_some_and(|(app, action)| {
+        (app == TWIN_HOST && READ_ACTS.contains(&action.as_str()))
+            // E.ARENA1-F41 (yantrik-os #480): the browser app's pure reads.
+            || (app == "browser" && BROWSER_READ_ACTS.contains(&action.as_str()))
+    })
 }
+
+/// E.ARENA1-F41: `os_act browser <action>` that only reads.
+const BROWSER_READ_ACTS: [&str; 5] = ["read", "find", "text", "tabs", "media"];
 
 fn read_act_sig(sig: &str) -> bool {
     sig.split_once('|')
@@ -1747,6 +1787,27 @@ mod tests {
         );
         let web = serde_json::json!({"app": "App Shell"});
         assert_eq!(fold_desktop_args("web_search", web.clone()), web, "another tool's args were touched");
+    }
+
+    /// E.ARENA1-F41 (yantrik-os #480): browser reads go stale after a browser change; a read
+    /// forgets nothing; the browser's own reads through os_act are read acts; `chromium` is the browser.
+    #[test]
+    fn the_browsers_reads_and_changes_are_told_apart() {
+        let read = "mcp.yantrik-os.web_read|{}".to_string();
+        let find = "mcp.yantrik-os.web_find|{\"text\":\"Buy\"}".to_string();
+        let click = "mcp.yantrik-os.web_click|{\"ref\":\"e12\"}".to_string();
+        assert!(changes_the_desktop("mcp.yantrik-os.web_click") && changes_the_desktop("mcp.yantrik-os.web_type"));
+        assert!(changes_the_desktop("mcp.yantrik-os.web_scroll"), "a scroll changes what a read sees");
+        assert!(!changes_the_desktop("mcp.yantrik-os.web_read") && !changes_the_desktop("mcp.yantrik-os.web_tabs"));
+        let mut done: std::collections::HashSet<String> = [read.clone(), find.clone(), click.clone()].into_iter().collect();
+        forget_desktop_reads(&mut done);
+        assert!(!done.contains(&read) && !done.contains(&find), "a page read would be served stale after a click");
+        assert!(done.contains(&click), "a click was forgotten -- it could be sent twice");
+        assert!(is_read_act(ACT, &serde_json::json!({"app": "browser", "action": "text"})));
+        assert!(!is_read_act(ACT, &serde_json::json!({"app": "browser", "action": "click", "args": {"ref": "e3"}})));
+        assert!(repeatable("mcp.yantrik-os.web_scroll") && !repeatable("mcp.yantrik-os.web_click"));
+        assert_eq!(fold_app("Chromium"), "browser");
+        assert_eq!(fold_app("app-browser"), "browser");
     }
 
     #[test]
