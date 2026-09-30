@@ -83,14 +83,28 @@ fn now_ms() -> u64 {
 /// on disk always means "registration is open".
 pub(crate) fn ensure_pairing_code(devices: &mind_governance::devices::DeviceStore) {
     let dir = crate::telegram::state_dir();
-    let path = std::path::Path::new(&dir).join(PAIRING_CODE_FILE);
     let browser_paired = devices
         .list()
         .iter()
         .any(|d| !d.revoked && d.name.starts_with(WEB_DEVICE_PREFIX));
-    if browser_paired {
+    pairing_code_at(std::path::Path::new(&dir), webui_enabled(&|k| std::env::var(k).ok()), browser_paired);
+}
+
+/// Is the browser chat surface on? `YM_WEBUI=off` turns it off; anything else, or unset, leaves it on.
+fn webui_enabled(get: &dyn Fn(&str) -> Option<String>) -> bool {
+    get("YM_WEBUI").map_or(true, |v| v != "off")
+}
+
+/// The pairing code's state in `dir`, and the code when one was minted now.
+///
+/// E.PAIR1: with the web UI off nothing can redeem a code, so none is minted or printed, and one
+/// left by an earlier start is removed -- a credential with no use is only exposure (VM 561 printed
+/// one to its journal with `YM_WEBUI=off`).
+fn pairing_code_at(dir: &std::path::Path, enabled: bool, browser_paired: bool) -> Option<String> {
+    let path = dir.join(PAIRING_CODE_FILE);
+    if !enabled || browser_paired {
         let _ = std::fs::remove_file(&path);
-        return;
+        return None;
     }
     if let Ok(existing) = std::fs::read_to_string(&path) {
         if !existing.trim().is_empty() {
@@ -98,28 +112,38 @@ pub(crate) fn ensure_pairing_code(devices: &mind_governance::devices::DeviceStor
                 "[web-ui] first-time registration is OPEN — code in {}",
                 path.display()
             );
-            return;
+            return None;
         }
     }
     let code = mint_code();
-    if std::fs::write(&path, &code).is_ok() {
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-        }
+    if write_secret_600(&path, &code).is_ok() {
         // The journal line IS the installation hand-off Pranab asked for: install prints it, the
         // person types it into the page once, and the file disappears on success.
         eprintln!(
             "[web-ui] first-time registration code: {code}  (also in {})",
             path.display()
         );
+        Some(code)
     } else {
         eprintln!(
             "[web-ui] could not write {} — first-time registration UNAVAILABLE (fail-closed)",
             path.display()
         );
+        None
     }
+}
+
+/// Write a credential file that is 0600 from the moment it exists (on unix), not after.
+fn write_secret_600(path: &std::path::Path, text: &str) -> std::io::Result<()> {
+    use std::io::Write;
+    let mut opts = std::fs::OpenOptions::new();
+    opts.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        opts.mode(0o600);
+    }
+    opts.open(path)?.write_all(text.as_bytes())
 }
 
 /// A readable one-time code: 8 chars from an unambiguous alphabet, grouped 4-4. ~39.6 bits over a
@@ -179,10 +203,7 @@ pub(crate) fn spawn_webui_server(
     devices: Arc<mind_governance::devices::DeviceStore>,
     rt: tokio::runtime::Handle,
 ) {
-    if std::env::var("YM_WEBUI")
-        .map(|v| v == "off")
-        .unwrap_or(false)
-    {
+    if !webui_enabled(&|k| std::env::var(k).ok()) {
         return;
     }
     let port: u16 = std::env::var("YM_WEBUI_PORT")
@@ -1996,6 +2017,55 @@ mod tests {
     /// process-global, and two such tests in parallel would read each other's scratch dirs —
     /// the exact hygiene class Codex flagged on the private-lane fixture.
     static WEB_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn pair_scratch(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ym-pair1-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    /// E.PAIR1 (VM 561): with the web UI off, no code is minted, written or printed, and one left
+    /// by an earlier start is removed.
+    #[test]
+    fn a_mind_with_its_web_ui_off_holds_no_registration_code() {
+        let dir = pair_scratch("off");
+        assert_eq!(super::pairing_code_at(&dir, false, false), None);
+        assert!(!dir.join(super::PAIRING_CODE_FILE).exists(), "a code was written with the web UI off");
+        std::fs::write(dir.join(super::PAIRING_CODE_FILE), "OLD1-CODE").unwrap();
+        assert_eq!(super::pairing_code_at(&dir, false, false), None);
+        assert!(!dir.join(super::PAIRING_CODE_FILE).exists(), "a stale code survived with the web UI off");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// E.PAIR1: with the web UI on and no browser paired, a code is minted, written 0600, and
+    /// returned; once a browser is paired the file goes.
+    #[test]
+    fn with_the_web_ui_on_registration_opens_until_a_browser_pairs() {
+        let dir = pair_scratch("on");
+        let code = super::pairing_code_at(&dir, true, false).expect("a code is minted");
+        let path = dir.join(super::PAIRING_CODE_FILE);
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), code);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(std::fs::metadata(&path).unwrap().permissions().mode() & 0o777, 0o600);
+        }
+        assert_eq!(super::pairing_code_at(&dir, true, false), None, "an open code is kept, not re-minted");
+        assert_eq!(std::fs::read_to_string(&path).unwrap(), code);
+        assert_eq!(super::pairing_code_at(&dir, true, true), None);
+        assert!(!path.exists(), "the code outlived the pairing");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn only_off_turns_the_web_ui_off() {
+        let env = |v: Option<&'static str>| move |k: &str| (k == "YM_WEBUI").then_some(v).flatten().map(String::from);
+        assert!(!super::webui_enabled(&env(Some("off"))));
+        for v in [None, Some("on"), Some(""), Some("1")] {
+            assert!(super::webui_enabled(&env(v)), "{v:?} turned the web UI off");
+        }
+    }
 
     /// The E.WEB0 race criterion, at the exact function that must enforce it: two concurrent
     /// redemptions of ONE code under DIFFERENT names — the pairing that shipped first and both
