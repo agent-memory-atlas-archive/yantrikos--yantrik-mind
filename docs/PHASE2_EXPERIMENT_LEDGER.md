@@ -11163,3 +11163,13 @@ He read the diff and **signed off.** The check failing on this merge is his revi
 So main moving would have carried all 132 commits, including the yantrikdb 0.21.2 → 0.23.0 migration of the family mind.db, to production on the next green tick. **On his word, the kill switch was set** (04:51:30 UTC; no tick was running). Self-build, auto-merge and self-deploy are halted on .90 until someone deletes the file. Production moves only on his word, after the mind.db upgrade is tested on a backup copy.
 
 **The release.** Workspace version 0.1.0 → 0.2.0, with RELEASE_NOTES.md rewritten for v0.2.0; its upgrade section leads with the mind.db migration and backup. Suite 2164/0. Main is fast-forwarded to the tested commits and tagged `v0.2.0`.
+
+## Mind gate on yantrik-os 364f0761 (#514, #516–#519): PASS
+
+- **Setup:** Mind 8e6fc34 (sha256 75a2a4dc2624e4e3), on 520, at yantrik-os-07's request before promoting to the public nightly.
+- **Reading 1, 08:07 UTC: no verdict.** CONTROL FAILED on T2 and T7. That morning's calendar-store reset had removed the 25 Sep fixture both grade against (`calendar_day(25)` returned `[]`). The harness has no seeding step. 07 restored the three original event files, same ids, from the moved-aside store.
+- **Reading 2, 08:08 UTC: no verdict.** Control and preflight OK; T1–T4 passed. T5 came back VOID(locked): the seat idle-locked mid-run, and the run stopped. I have no sanctioned unlock, so 07 unlocked the seat and kept it awake.
+- **Reading 3, 08:13–08:17 UTC, the verdict:** control OK, preflight OK, T1–T7 at one rep. 7/7, 0 false claims, median 7.4 s (T1 4.9, T2 4.0, T3 6.3, T4 7.4, T5 11.3, T6 10.6, T7 14.9).
+- **Left behind:** 2 arena events on 30 Sep, kept deliberately (`--keep-events`).
+
+**Follow-up (07's, harness_arena):** `--preflight` seeds the fixture when it is missing, and control reports "fixture missing" rather than a failed correct run.
