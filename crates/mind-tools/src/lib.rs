@@ -556,6 +556,7 @@ fn fetch_headful(url: &str) -> anyhow::Result<String> {
 /// Reader-proxy fallback: a server-side reader renders the page with a REAL browser and returns clean
 /// markdown — getting content from sites that block our direct request (bot/TLS/JS walls). The target
 /// is already SSRF-checked + public; the fetched text remains untrusted reference data.
+/// E.READER1: a third party sees the URL and the page, so it runs only when the person allowed it.
 fn fetch_reader(url: &str) -> anyhow::Result<String> {
     let resp = mind_net::get(&format!("https://r.jina.ai/{url}"))
         .timeout(std::time::Duration::from_secs(30))
@@ -565,6 +566,45 @@ fn fetch_reader(url: &str) -> anyhow::Result<String> {
     let mut bytes = Vec::new();
     resp.into_reader().take(2_000_000).read_to_end(&mut bytes)?;
     Ok(compact_blanks(&String::from_utf8_lossy(&bytes)))
+}
+
+/// E.READER1: has the person allowed the third-party reader? Only `YM_WEB_READER=jina`.
+fn reader_allowed(get: &dyn Fn(&str) -> Option<String>) -> bool {
+    get("YM_WEB_READER").is_some_and(|v| v.trim().eq_ignore_ascii_case("jina"))
+}
+
+/// Opens any text that came through the reader, so the model can tell the person who saw the page.
+const READER_NOTE: &str = "[read through r.jina.ai, a third-party reader, because the site did not answer a direct request]";
+
+/// E.READER1: the fetch ladder over its tiers -- direct, then the LOCAL headless browser, then the
+/// third-party reader only when `reader_ok`. A thin direct answer is still better than none.
+fn fetch_ladder(
+    direct: impl FnOnce() -> anyhow::Result<String>,
+    headless: impl FnOnce() -> anyhow::Result<String>,
+    reader_ok: bool,
+    reader: impl FnOnce() -> anyhow::Result<String>,
+) -> anyhow::Result<String> {
+    // 1. Direct (fast, private). Accept it if it returned real content.
+    let direct = direct();
+    if let Ok(t) = &direct {
+        if t.trim().chars().count() >= 250 {
+            return Ok(t.clone());
+        }
+    }
+    // 2. A LOCAL headless browser (real Chrome, our IP) — JS-rendered pages and most bot walls,
+    //    and nobody else sees the URL.
+    if let Ok(t) = headless() {
+        return Ok(t);
+    }
+    // 3. The reader proxy, only when allowed — and the text says it went through a third party.
+    if reader_ok {
+        if let Ok(t) = reader() {
+            if t.trim().chars().count() > 80 {
+                return Ok(format!("{READER_NOTE}\n\n{t}"));
+            }
+        }
+    }
+    direct.or_else(|_| anyhow::bail!("couldn't fetch (direct and headless failed; the third-party reader is off unless YM_WEB_READER=jina)"))
 }
 
 #[async_trait]
@@ -579,27 +619,8 @@ impl Fetcher for HttpFetcher {
             // SSRF guard FIRST: never let an (injected) URL pull from the local/internal network
             // (this also gates what we'd hand to the reader proxy).
             ssrf_check(&url)?;
-            // 1. Direct (fast, private). Accept it if it returned real content.
-            let direct = fetch_direct(&url);
-            if let Ok(t) = &direct {
-                if t.trim().chars().count() >= 250 {
-                    return Ok(t.clone());
-                }
-            }
-            // 2. Blocked/empty/too-thin → the reader proxy (real browser server-side, free keyless).
-            if let Ok(t) = fetch_reader(&url) {
-                if t.trim().chars().count() > 80 {
-                    return Ok(t);
-                }
-            }
-            // 3. Still nothing → a LOCAL headless browser (real Chrome, our IP). Beats JS-rendered +
-            //    most bot walls the proxy can't. This is the "browser capability to read any site" path.
-            if let Ok(t) = fetch_headless(&url) {
-                return Ok(t);
-            }
-            direct.or_else(|_| {
-                anyhow::bail!("couldn't fetch (direct + reader + headless all failed)")
-            })
+            let reader_ok = reader_allowed(&|k| std::env::var(k).ok());
+            fetch_ladder(|| fetch_direct(&url), || fetch_headless(&url), reader_ok, || fetch_reader(&url))
         })
         .await??;
         let mut t = text.trim().to_string();
@@ -2455,5 +2476,75 @@ mod vision_base_tests {
     #[test]
     fn nothing_configured_is_none_never_a_box_on_someones_lan() {
         assert_eq!(vision_ollama_base(None, None), None);
+    }
+}
+
+#[cfg(test)]
+mod reader_tests {
+    use super::{fetch_ladder, reader_allowed, READER_NOTE};
+    use std::cell::Cell;
+
+    const THIN: &str = "Example Domain\nThis domain is for use in documentation examples.";
+
+    /// E.READER1 (520, e5da6aa: example.org went to r.jina.ai): with the reader not allowed, a thin
+    /// direct answer and no headless browser make NO reader call -- the thin text is the answer.
+    #[test]
+    fn a_short_page_is_not_sent_to_a_third_party_unasked() {
+        let calls = Cell::new(0);
+        let unset = reader_allowed(&|_| None);
+        let t = fetch_ladder(
+            || Ok(THIN.to_string()),
+            || anyhow::bail!("headless fetch not available"),
+            unset,
+            || { calls.set(calls.get() + 1); Ok("# Example Domain\n".repeat(20)) },
+        )
+        .unwrap();
+        assert_eq!((t.as_str(), calls.get()), (THIN, 0), "the page went to the third-party reader unasked");
+    }
+
+    /// E.READER1: allowed, the local browser still goes first; the reader runs last and says so.
+    #[test]
+    fn when_allowed_the_reader_runs_after_the_local_browser_and_names_itself() {
+        let order = Cell::new(String::new());
+        let push = |s: &str| order.set(format!("{}{s},", order.take()));
+        let t = fetch_ladder(
+            || { push("direct"); Ok(THIN.to_string()) },
+            || { push("headless"); anyhow::bail!("blocked") },
+            true,
+            || { push("reader"); Ok("# A page\n".repeat(20)) },
+        )
+        .unwrap();
+        assert_eq!(order.take(), "direct,headless,reader,");
+        assert!(t.starts_with(READER_NOTE), "the reader's text did not say where it came from: {t:.60}");
+
+        let used = Cell::new(false);
+        let t = fetch_ladder(|| Ok(THIN.to_string()), || Ok("local text".into()), true, || { used.set(true); Ok("x".repeat(200)) }).unwrap();
+        assert_eq!(t, "local text");
+        assert!(!used.get(), "the reader ran although the local browser answered");
+    }
+
+    /// A full direct answer ends the ladder.
+    #[test]
+    fn a_full_direct_page_runs_no_other_tier() {
+        let others = Cell::new(0);
+        let full = "word ".repeat(60);
+        let t = fetch_ladder(
+            || Ok(full.clone()),
+            || { others.set(others.get() + 1); Ok("h".into()) },
+            true,
+            || { others.set(others.get() + 1); Ok("r".repeat(200)) },
+        )
+        .unwrap();
+        assert_eq!((t, others.get()), (full, 0));
+    }
+
+    #[test]
+    fn only_the_word_jina_allows_the_reader() {
+        let env = |v: Option<&'static str>| move |k: &str| (k == "YM_WEB_READER").then_some(v).flatten().map(String::from);
+        assert!(reader_allowed(&env(Some("jina"))));
+        assert!(reader_allowed(&env(Some(" JINA "))));
+        for v in [None, Some(""), Some("1"), Some("true"), Some("jina.ai")] {
+            assert!(!reader_allowed(&env(v)), "{v:?} allowed the third-party reader");
+        }
     }
 }

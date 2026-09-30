@@ -11124,3 +11124,18 @@ Before the install, none of the tools' hosts appeared. The last kill criterion h
 Each is watched to fail under a mutant.
 
 **Production note:** .90 has used Jina for bot-walled sites. After this it relies on the local headless tier unless Pranab sets `YM_WEB_READER=jina` there. Deploys stay on his word.
+
+**E.READER1 — RESULT: built, and every kill criterion held.** Full suite: 2164 passed, 0 failed.
+- `fetch_ladder(direct, headless, reader_ok, reader)` is pure; `HttpFetcher::fetch` passes `reader_allowed(env)`.
+- **Tests:**
+  - `a_short_page_is_not_sent_to_a_third_party_unasked`: example.org's real text, with headless unavailable and the flag read from an empty environment, makes 0 reader calls.
+  - `when_allowed_the_reader_runs_after_the_local_browser_and_names_itself`: the order is direct, headless, reader; the text opens with the r.jina.ai note; the reader does not run when headless answered.
+  - `a_full_direct_page_runs_no_other_tier`.
+  - `only_the_word_jina_allows_the_reader`: unset, empty, `1`, `true` and `jina.ai` all refuse.
+- **Mutants, each watched to fail its test:**
+  - M1: the flag is ignored.
+  - M2: the reader goes before headless. It first failed only to *compile* (FnOnce used twice), which is no evidence; redone as a block move, it failed the order test.
+  - M3: no disclosure.
+  - M4: a full direct page is not accepted.
+  - M5: any value allows.
+- **Still to confirm live:** on 520, the same example.org fetch shows example.org and no r.jina.ai in 07's ledger.
