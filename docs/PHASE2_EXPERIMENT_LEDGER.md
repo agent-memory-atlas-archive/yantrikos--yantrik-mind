@@ -11056,3 +11056,24 @@ The memory server's door client (E.DOOR1) never caches a refusal, but a yes cach
 - go A, go A sends 1.
 
 **E.ARENA1-F42 — RESULT: built, and both kill criteria held** (in the extended `the_browser_is_read_again_after_it_changes`): go A, go B, go A sends 3; go A, go A sends 1. Mutant M1 (web calls stay repeats) was watched to fail. Full suite: 2156 passed, 0 failed (the test was extended, not added). It rides the next Mind restart on 520.
+
+## E.EGRESS1 — PREREG (planned, not built): every Mind client uses the egress proxy, except loopback
+
+yantrik-os #503 (on 520, audit mode) routes the Mind account through `yantrik-egress` (HTTPS_PROXY=127.0.0.1:7450, NO_PROXY=127.0.0.1,localhost,::1). Default-deny comes later, and 07 holds it until this is done.
+
+**Read from the code and the ureq sources:**
+- The model calls go through yantrik-ml's **ureq 3**, which honours both HTTPS_PROXY and NO_PROXY, so they're proxied.
+- mind-core, mind-inference, mind-tools and mind-governance use **ureq 2** without its `proxy-from-env` feature: **85 agent or request constructions** (mind-tools 67, mind-core 14, mind-inference 2, mind-governance 2). Today they go **direct**, around the proxy.
+- ureq 2's env proxy **ignores NO_PROXY**, so switching the feature on would send loopback calls (a same-box Ollama, SearXNG or Home Assistant) to a proxy that refuses loopback in every mode.
+
+**Plan:**
+- One shared helper, `net::agent_for(url)`: proxied when a proxy variable is set, unless the URL's host is loopback or matches NO_PROXY, which then goes direct.
+- Every ureq 2 construction goes through it.
+- A scan test fails the build on any new bare `ureq::get` / `AgentBuilder::new()`.
+
+**Kill criteria:**
+- A public host gets the proxy.
+- `127.0.0.1`, `localhost`, `::1` and NO_PROXY hosts go direct.
+- With no proxy set, behaviour is unchanged.
+- The scan finds no bare constructions.
+- On 520, 07's ledger shows the tools' destinations (weather, search, fetch) after the install, where it showed none before.
