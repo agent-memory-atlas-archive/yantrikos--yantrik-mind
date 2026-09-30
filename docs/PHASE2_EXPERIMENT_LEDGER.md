@@ -11096,3 +11096,31 @@ yantrik-os #503 (on 520, audit mode) routes the Mind account through `yantrik-eg
 - **Setup:** Mind 4128222 (sha256 8042a0292a637704), on 520. The gate was run at yantrik-os-07's request before promoting to the public nightly.
 - **Results:** control OK, preflight OK. T1–T7 at one rep: 7/7, 0 false claims, median 12.9 s (T1 12.9, T2 6.5, T3 6.6, T4 10.3, T5 18.2, T6 15.5, T7 15.2).
 - **Left behind:** 40 arena events on 30 Sep, kept deliberately (`--keep-events`, yantrik-os #201).
+
+**E.EGRESS1 — LIVE on 520: confirmed by the egress ledger.** Build e5da6aa, sha256 0f09d4913a486b25. yantrik-os-07 read `/var/lib/yantrik-egress/seen.json` under the yantrik-mind uid. Every entry was audited and none was refused:
+- `geocoding-api.open-meteo.com` 2 and `api.open-meteo.com` 2, first seen 04:15:55 UTC (the weather turn).
+- `example.org` 1, at 04:16:26 (the web_fetch turn).
+- `ollama.com` 51.
+- `r.jina.ai` 1, in the same second as example.org (see E.READER1).
+
+Before the install, none of the tools' hosts appeared. The last kill criterion held. Whether to enforce default-deny is Pranab's call, and 07 is putting the host list in front of him.
+
+## E.READER1 — PREREG: a page the person asks for is not sent to a third-party reader without their say
+
+**Seen live** (E.EGRESS1, 520): "Fetch https://example.org" also sent the URL to `r.jina.ai`. The code shows why. `HttpFetcher::fetch` runs direct first; **anything under 250 readable characters** falls to `fetch_reader` (Jina) *before* the local headless browser. example.org is short, so an ordinary page went to a third party. Every blocked, JS-rendered or short page does the same, so Jina sees the URL (which can carry tokens, as reset or share links do) and the page it returns. Nobody chose this, and nothing tells the person. It is the only fetch path where a URL goes to an intermediary. Search (DuckDuckGo, SearXNG) is the service the person asked for.
+
+**Plan:**
+- The reader is off unless `YM_WEB_READER=jina` is set.
+- The ladder becomes direct → local headless → reader (only if allowed) → the thin direct text.
+- When the reader is used, the result opens with a line naming it, so the model can say so.
+- The ladder is a pure function over its tiers, so it can be tested without the network.
+
+**Kill criteria:**
+1. Unset: direct thin, headless unavailable → **zero** reader calls, and the thin direct text is returned.
+2. Set: headless is tried **before** the reader. When both fail and the reader succeeds, the text names r.jina.ai.
+3. Direct with ≥250 characters → no other tier runs.
+4. Only `jina` (any case, trimmed) enables it; empty or another value does not.
+
+Each is watched to fail under a mutant.
+
+**Production note:** .90 has used Jina for bot-walled sites. After this it relies on the local headless tier unless Pranab sets `YM_WEB_READER=jina` there. Deploys stay on his word.
