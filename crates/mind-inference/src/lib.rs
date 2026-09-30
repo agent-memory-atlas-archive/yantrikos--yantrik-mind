@@ -2880,11 +2880,14 @@ pub fn local_backend_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
     if let Some(pool) = brain_pool_from_env() {
         return Some(pool);
     }
-    let url = std::env::var("YM_LOCAL_OLLAMA_URL")
-        .ok()
-        .filter(|u| !u.trim().is_empty())?;
-    let model = std::env::var("YM_LOCAL_OLLAMA_MODEL")
-        .unwrap_or_else(|_| "qwen3.6:35b-a3b-mtp-q4_K_M".to_string());
+    local_backend_from(&|k| std::env::var(k).ok())
+}
+
+/// The single-endpoint local lane from its settings (`YM_LOCAL_OLLAMA_*`), read through `get` so a
+/// test can build the real lane without touching the process environment.
+fn local_backend_from(get: &dyn Fn(&str) -> Option<String>) -> Option<(Arc<dyn LLMBackend>, String)> {
+    let url = get("YM_LOCAL_OLLAMA_URL").filter(|u| !u.trim().is_empty())?;
+    let model = get("YM_LOCAL_OLLAMA_MODEL").unwrap_or_else(|| "qwen3.6:35b-a3b-mtp-q4_K_M".to_string());
     // Provider type "ollama" (NOT "openai"): our endpoint is an Ollama server — self-hosted OR
     // fronted by a TLS gateway that doesn't carry the :11434 auto-detect port. The "openai" path
     // POSTs to <url>/chat/completions (missing /v1 → 404, or /v1 → 307 redirect) AND can't turn off
@@ -2892,14 +2895,14 @@ pub fn local_backend_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
     // preset routes to native /api/chat, sends `think:false` (fast, clean content), passes tools for
     // the agent loop. A plain Ollama needs no auth; a gateway in front of one (the live instance's
     // sealed gate) needs `YM_LOCAL_OLLAMA_KEY`, sent as a Bearer header to this address only.
-    let key = local_ollama_key(&|k| std::env::var(k).ok());
+    let key = local_ollama_key(get);
     // Thinking is a per-workload quality/latency lever on qwen3.6 MoE (binary; reasoning_effort
     // levels don't scale — ollama maintainer, 2026-07-21). Blanket thinking-ON measured ~96s even
     // for a trivial turn (the agent loop multiplies the reasoning chain across steps) — unusable
     // for interactive replies. So default OFF for foreground usability; set YM_LOCAL_THINK=on to
     // force it globally. The proper split — thinking ON only on background planning paths — is the
     // follow-up; this env keeps the fast default while the builder plumbing is already in place.
-    let think = std::env::var("YM_LOCAL_THINK")
+    let think = get("YM_LOCAL_THINK")
         .map(|v| {
             matches!(
                 v.trim().to_ascii_lowercase().as_str(),
@@ -3457,9 +3460,9 @@ mod privacy_tests {
         // include_str! resolves next to this file, so the guard works from any working directory.
         const SRC: &str = include_str!("lib.rs");
         let local = SRC
-            .split("pub fn local_backend_from_env")
+            .split("fn local_backend_from(")
             .nth(1)
-            .expect("local_backend_from_env exists");
+            .expect("local_backend_from exists");
         let local = &local[..local.find("\n}\n").unwrap_or(local.len())];
         assert!(
             local.contains("for_provider(\"ollama\""),
@@ -3478,6 +3481,76 @@ mod privacy_tests {
         assert_eq!(local_ollama_key(&env(None)), None, "no key set must send no key");
         assert_eq!(local_ollama_key(&env(Some("  "))), None, "a blank key is no key");
         assert_eq!(local_ollama_key(&env(Some(" inst-key-1234 "))).as_deref(), Some("inst-key-1234"));
+    }
+
+    /// The request head the Mind's real local lane puts on the wire for these settings, read by a
+    /// listener standing in for the server. Every wait has a deadline, so a regression fails.
+    fn local_lane_request_head(key: Option<&'static str>) -> String {
+        use std::io::{Read, Write};
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://127.0.0.1:{}", listener.local_addr().unwrap().port());
+        let server = std::thread::spawn(move || {
+            let limit = std::time::Duration::from_secs(10);
+            let deadline = std::time::Instant::now() + limit;
+            listener.set_nonblocking(true).unwrap();
+            let mut conn = loop {
+                match listener.accept() {
+                    Ok((c, _)) => break c,
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && std::time::Instant::now() < deadline => {
+                        std::thread::sleep(std::time::Duration::from_millis(10))
+                    }
+                    Err(e) => panic!("the local lane sent nothing within {limit:?}: {e}"),
+                }
+            };
+            conn.set_nonblocking(false).unwrap();
+            conn.set_read_timeout(Some(limit)).unwrap();
+            let (mut got, mut buf) = (Vec::new(), [0u8; 4096]);
+            let end = loop {
+                let n = conn.read(&mut buf).unwrap();
+                assert!(n > 0, "the client hung up before sending a request");
+                got.extend_from_slice(&buf[..n]);
+                if let Some(i) = got.windows(4).position(|w| w == b"\r\n\r\n") {
+                    break i;
+                }
+            };
+            let head = String::from_utf8_lossy(&got[..end]).to_string();
+            let len = head.lines().find_map(|l| l.to_ascii_lowercase().strip_prefix("content-length:").map(|v| v.trim().parse::<usize>().unwrap())).unwrap_or(0);
+            while got.len() < end + 4 + len {
+                let n = conn.read(&mut buf).unwrap();
+                if n == 0 {
+                    break;
+                }
+                got.extend_from_slice(&buf[..n]);
+            }
+            let reply = r#"{"model":"m","message":{"role":"assistant","content":"ok"},"done":true,"done_reason":"stop","prompt_eval_count":1,"eval_count":1}"#;
+            write!(conn, "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{reply}", reply.len()).unwrap();
+            head
+        });
+        let get = move |k: &str| match k {
+            "YM_LOCAL_OLLAMA_URL" => Some(url.clone()),
+            "YM_LOCAL_OLLAMA_MODEL" => Some("m".to_string()),
+            "YM_LOCAL_OLLAMA_KEY" => key.map(String::from),
+            _ => None,
+        };
+        let (be, _) = local_backend_from(&get).expect("the local lane is built from its settings");
+        let _ = be.chat(&[ChatMessage::user("hi")], &GenerationConfig::default(), None);
+        server.join().unwrap()
+    }
+
+    /// E.LKEY1, the Mind and yantrik-ml together: the real local lane sends no Authorization to a
+    /// plain Ollama (no key, or a blank one) and exactly its key to a gated one (VM 561's sealed gate).
+    #[test]
+    fn the_local_lane_on_the_wire_sends_the_persons_key_or_nothing() {
+        for key in [None, Some(""), Some("   ")] {
+            let head = local_lane_request_head(key).to_ascii_lowercase();
+            assert!(head.starts_with("post /api/chat "), "{head}");
+            assert!(!head.contains("\nauthorization:"), "{key:?} sent an Authorization header:\n{head}");
+        }
+        let head = local_lane_request_head(Some(" inst-key-1234 "));
+        assert!(
+            head.lines().any(|l| l.eq_ignore_ascii_case("authorization: Bearer inst-key-1234")),
+            "the gated lane carries exactly its key:\n{head}"
+        );
     }
 
     /// E.LKEY1: no placeholder key is handed to an ollama backend anywhere in this file -- a gateway

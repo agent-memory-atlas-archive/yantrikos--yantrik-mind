@@ -11302,3 +11302,14 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 - **Mutants, each watched to fail its test:** M1 the placeholder back in the local lane; M2 back in the pool; M3 a blank key kept; M4 the key not trimmed.
 - **With today's yantrik-companion yantrik-ml** (Ollama auth "none"), nothing changes on the wire.
 - **Still to confirm live,** once the yantrik-companion change is merged and the staging build box's companion checkout is updated: 561's local lane authenticates, and a plain Ollama receives no `Authorization` header.
+
+**E.LKEY1 — the library half merged, and the Mind and library tested together.**
+- **yantrik-companion PR #1 (07's), reviewed and merged as 3203e2e.** `for_provider` uses "bearer" for every provider, and `auth_headers` skips a `None` or blank key.
+- **The review found `ProviderEntry.auth_type` unread** in companion, the same gap #525 closed in the OS copy. 07 added `ProviderEntry::key_to_send()`, where `"none"` wins over any key, and gave the wire test deadlines so it cannot hang.
+- **I ran it myself:** `generic_openai` 11/0 (it needs `--no-default-features --features api-llm`; without them 0 tests run and the result looks like a pass), and `provider_entry` 1/0.
+- **The Mind side:** `local_backend_from(get)` now builds the single-endpoint lane from its settings; `local_backend_from_env` is unchanged in behaviour.
+- **New test `the_local_lane_on_the_wire_sends_the_persons_key_or_nothing`:** the Mind's real lane against a real listener. No key, `""` and `"   "` send no `Authorization`. `" inst-key-1234 "` sends exactly `Bearer inst-key-1234`.
+- **Mutants, each watched to fail at the expected assert:**
+  - M-A: the lane is handed `"ollama"` again, and it fails at the no-header assert.
+  - M-B: companion's `generic_openai.rs` goes back to the pre-#1 version (Ollama auth "none"), and it fails at the gated assert. So the test depends on the merged library.
+- **Suite:** 2167 passed, 0 failed.
