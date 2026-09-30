@@ -11427,3 +11427,12 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 - **Test.** `a_renamed_mind_is_told_its_old_name_was_an_earlier_one`: "Yantrik Mind" carries the line; `default_persona`, `persona("jarvis", …)` and `persona("", …)` do not.
 - **Mutants, each watched to fail:** M1 never told; M2 always told; M3 case-sensitive compare.
 - **Still to confirm live:** a machine whose memory still says JARVIS (520).
+
+**E.NAME1b — LIVE on 520: PASS, with the old memory kept** (yantrik-os-07).
+- **Install:** c7d470b the verified way. BUILD says `commit=c7d470b`, which fixes the stale d99d97b; yantrik-mind 1af045e8…6b13; the earlier binaries are kept as `*.before-c7d470b`.
+- **Launcher:** #526 (e83ff20) sets `YM_MIND_NAME=Yantrik Mind` and `YM_OPERATOR=Pranab` from GECOS.
+- **The turn:** backend ollama-cloud:deepseek-v4.1-flash, 520's memory with its JARVIS turns untouched. `new_chat`, then "Who are you? One sentence." answered in about 5 s: "I'm Yantrik Mind — Pranab's AI companion on the YantrikDB memory substrate, …" No JARVIS.
+
+The turn is in Pranab's chat on 520, because he was at the seat.
+
+E.NAME1 and E.NAME1b are closed.
