@@ -11404,3 +11404,20 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 - **The code path is ruled out.** A list of every "JARVIS" in non-test code: the chat persona now takes `YM_MIND_NAME`; `myself` (`self_configuration`) carries no name; the only remaining prompt, the forecaster (foresight.rs:669), is not part of a chat turn.
 - **Hypothesis, not yet a finding:** 561's memory holds its first two answers ("I am JARVIS…"), and recall surfaces them for "who are you". I asked 07 for a read-only grep of mind.db, and the debug log's recalled lines if they exist, before anything is moved aside.
 - **Planned only if the hypothesis holds (E.NAME1b):** when a Mind has a name other than the legacy one, the persona says that any other name in its memory was an earlier name. Any install that ran an older build and then gets `YM_MIND_NAME` has the same memory.
+
+**E.NAME1 — LIVE on 561: PASS once the cause was confirmed.**
+- **The hypothesis held.** 07 opened 561's mind.db read-only (sqlite `mode=ro`): `mind_transcript.text` has 4 rows containing "jarvis", all still in the WAL; the main file, decisions.jsonl and every other table have 0.
+- **The fix for 561.** With the Mind stopped, 07 moved mind.db, its WAL and shm, decisions.jsonl and read_receipts.jsonl into `/var/lib/yantrik-mind/aside-20260930-jarvis-turns/` (kept, 700), which follows Pranab's rule that a new instance starts empty.
+- **Result.** On a fresh store, after `new_chat`, "Who are you, and who do you work for?" answered: "I'm Yantrik Mind, an AI companion built for and running on Yantrik Live's system." No JARVIS, and still no pairing code.
+
+## E.NAME1b — PREREG: a renamed Mind treats the old name in its memory as an earlier name
+
+**Why:** E.NAME1 showed that stored transcript turns carry a Mind's earlier self-name into every answer about itself. Every machine that ran an older build and now gets `YM_MIND_NAME` has those turns, 520 included. Moving a person's memory aside is not an option on a machine that belongs to someone.
+
+**Plan:** when the Mind's name is not the legacy one (compared case-insensitively), the persona adds one line: that another name in its memory or earlier turns was an earlier name, and that it is {name} now. An install with no configured name, production's family Mind included, gets no new line.
+
+**Kill criteria:**
+1. The persona for "Yantrik Mind" carries the line with the name.
+2. `default_persona` and `persona("jarvis", …)` do not carry it.
+3. Each is watched to fail under a mutant.
+4. Live, on a machine whose memory still says JARVIS (520): "who are you" answers with the given name and no "(JARVIS)".
