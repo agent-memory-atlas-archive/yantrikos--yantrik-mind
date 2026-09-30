@@ -11235,3 +11235,33 @@ So main moving would have carried all 132 commits, including the yantrikdb 0.21.
 3. the live design only *nudges* ("the person asked X; this reply doesn't do it — act, or say plainly why not") and never forces an action.
 
 Candidates (b) near-repeats and (c) tool narrowing need step-level logs, which the arena JSONL does not carry.
+
+**E.JUDGE1 (a) — why the latency misses, and parked.**
+
+**Where the time goes.** 07 measured tev1 at p50 150–166 ms (8 short cases ×3). I measured about 250 ms. These rule out the network and the client:
+
+| Condition | tev1 p50 / p95 |
+|---|---|
+| Dev PC, fresh connection per call | 236 / 299 ms |
+| Dev PC, kept-alive connection | 239 / 289 ms |
+| From 520, fresh or kept-alive | 242–250 / 304–316 ms |
+| Short instruction (291 vs 351 input tokens) | no change |
+| Reading 4, input 255 tokens | 265 / 299 ms |
+| **One input repeated** | **106 / 142 ms** |
+| **Distinct inputs** | **251 / 288 ms** |
+| 07's shape, 8 inputs cycled | 217 / 289 ms |
+
+**Cause: Ollama reuses the cached prefix of an identical prompt.** Every call the Mind makes is new, so about **250 ms p50 / 290 ms p95 is the real cost on this box.** It fails the preregistered 250 ms p95. The criterion is not revised here.
+
+**Reading 4** (short question; request ≤ 150 characters, reply ≤ 250) also shows the judge moves with wording, on the same data and model:
+- 176 flags: TP 162, FP 14;
+- against wording 2's 37 flags: TP 37, FP 0;
+- and wording 1's 214 flags: TP 194, FP 20.
+
+Which wording is right cannot be settled on the set the wordings were tuned on.
+
+**Parked**, with two conditions for picking it up again:
+1. **Fresh data.** New arena runs, which none of the wordings have seen, to choose between wording 2 (precise) and wording 4 (broader).
+2. **An explicit decision on the latency limit,** made with those numbers in hand, since about 300 ms p95 is intrinsic on this hardware. The trade-off to weigh: one check per ended turn, on turns of 4–15 s, adds 2–7%.
+
+No Mind code was written.
