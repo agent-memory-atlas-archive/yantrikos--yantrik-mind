@@ -11206,3 +11206,32 @@ So main moving would have carried all 132 commits, including the yantrikdb 0.21.
 - **Consent:** off unless the person names the endpoint (`YM_JUDGE_URL`). Nothing is sent to a judge by default.
 
 **Next:** harvest and label the real cases for (a) and (b) from the arena JSONL and 520's log, then run both models over them offline. No Mind code changes until a candidate passes.
+
+**E.JUDGE1 (a) — OFFLINE RESULT: accurate when narrowly asked; fails its own latency criterion. Not built.**
+
+**Data:** 606 unique arena records copied from 520 (read-only, with 07's permission). 599 of them ended: 383 passed, 216 failed, 15 false claims. The rules let all 599 end. Label: the arena grader's `pass`. Calls in series from the dev PC to `192.168.4.35/v1/systemone`. The scoring is fixed in `judge1a.py`: flag at noul ≤ 0.3; a wrong flag on a passed turn counts double; killed if there are fewer than 5 flags or TP ≤ 2·FP.
+
+| Reading | Question | Model | Flags | TP | FP | False claims caught | Warm p50 / p95 |
+|---|---|---|---|---|---|---|---|
+| 1 (prereg'd) | wording 1: "no" if it stopped short, reported it couldn't, asked instead of doing, or only claimed | tev1 | 214 | 194 | 20 | 8/15 | 246 / 300 ms |
+| 1 | wording 1 | nimble | 214 | 193 | 21 | 7/15 | 236 / 278 ms |
+| 2 | wording 2: "no" only if it stopped short without doing the work or saying why not | tev1 | **37** | **37** | **0** | 0/15 | 253 / 303 ms |
+| 2 | wording 2 | nimble | 29 | 23 | 6 | 0/15 | 237 / 278 ms |
+| 3 | wording 2, reply clipped to first 400 + last 200 chars | tev1 | 37 | 37 | 0 | 1/15 | 250 / 293 ms |
+
+**What the readings say:**
+- **Reading 1 passes the TP/FP line, but its FPs came from my wording, not the model.** 11 of tev1's 20 FPs are T11 (the file doesn't exist, and saying so is correct) and 2 are T10 (two events share the name, and asking is correct). Wording 1 told the judge to call a truthful refusal or a needed question "not done". Live, that would push a correct refusal into acting, for example guessing which event to move.
+- **Exploratory check, not preregistered:** a keyword rule for "couldn't / failed / sorry" flags 114 (TP 95, FP 19). tev1 caught 99 failures the keyword rule missed, at 8 more FPs. These are the premature endings: the reply restates the request or describes the screen and stops.
+- **Reading 2 was written after reading 1, so it is tuned on this set.**
+  - tev1 is exact on what it flags: 37/37, 0 FP, abstaining on 147. For the Mind alone that's 6 flags, 6 real.
+  - Recall is 17% of failures. Most failures are honest "couldn't" (nothing for a nudge to fix) or false claims (0/15 — a judge that sees only the text cannot catch a lie).
+  - nimble is worse on the narrow question (6 FP).
+  - It must be confirmed on arena runs not yet made.
+- **Latency fails the preregistered p95 ≤ 250 ms in every reading (278–303 ms), and clipping the reply does not help** (reading 3: accuracy identical, p95 293 ms). The cost is fixed per call, not per input, and 07 measured about 150 ms p50 on the same models. The criterion stands. The next step is to find where the extra ~100 ms goes (network path from this PC, or the GPU shared with another model), not to widen the limit.
+
+**Verdict:** (a) does not pass as preregistered. It is worth continuing only as tev1 with wording 2, and only once:
+1. latency meets the limit, measured from where the Mind would call it;
+2. wording 2 holds on fresh arena runs;
+3. the live design only *nudges* ("the person asked X; this reply doesn't do it — act, or say plainly why not") and never forces an action.
+
+Candidates (b) near-repeats and (c) tool narrowing need step-level logs, which the arena JSONL does not carry.
