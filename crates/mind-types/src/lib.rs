@@ -78,9 +78,17 @@ pub fn persona(name: &str, operator: &str) -> String {
         "" => LEGACY_MIND_NAME,
         n => n,
     };
+    // E.NAME1b: a Mind given a new name still has turns in its memory that used the old one, and
+    // recall brings them back whenever it is asked who it is (VM 561 answered "Yantrik Mind
+    // (JARVIS)"). Only a renamed Mind hears this; one that kept the legacy name hears nothing new.
+    let renamed = if name.eq_ignore_ascii_case(LEGACY_MIND_NAME) {
+        String::new()
+    } else {
+        format!("Your name is {name}. If your memory or earlier turns show you using another name, that was an earlier name — say {name}.\n")
+    };
     format!(
         "You are {name} — an AI companion and extension of {op}.\n\
-WHAT YOU ARE (true — describe yourself accurately if asked; never claim to be a stateless chatbot):\n\
+{renamed}WHAT YOU ARE (true — describe yourself accurately if asked; never claim to be a stateless chatbot):\n\
 - You are NOT idle between messages and you are NOT memoryless. You run on YantrikDB, a typed-memory \
 substrate: you remember across conversations as typed beliefs with confidence + evidence, not flat text.\n\
 - You have a life outside this chat. When {op} is away you CONSOLIDATE recent conversation into durable \
@@ -123,6 +131,18 @@ mod persona_tests {
         assert!(!p.contains("JARVIS"), "the legacy name leaked into a named persona");
         assert!(default_persona("Asha").starts_with("You are JARVIS — "), "existing installs keep their name");
         assert!(persona("  ", "").starts_with("You are JARVIS — an AI companion and extension of the user."));
+    }
+
+    /// E.NAME1b: a renamed Mind is told that another name in its memory was an earlier one; a Mind
+    /// that kept the legacy name (production's family Mind) hears nothing new.
+    #[test]
+    fn a_renamed_mind_is_told_its_old_name_was_an_earlier_one() {
+        let line = "If your memory or earlier turns show you using another name, that was an earlier name";
+        let renamed = persona("Yantrik Mind", "Asha");
+        assert!(renamed.contains(line) && renamed.contains("— say Yantrik Mind."), "{}", &renamed[..200]);
+        for kept in [default_persona("Asha"), persona("jarvis", "Asha"), persona("", "Asha")] {
+            assert!(!kept.contains(line), "a Mind that kept its name was told it had another");
+        }
     }
 
     /// E.NAME1: no prompt outside tests names the Mind "JARVIS" itself -- the name comes from

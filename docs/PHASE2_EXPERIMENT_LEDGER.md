@@ -11421,3 +11421,9 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 2. `default_persona` and `persona("jarvis", …)` do not carry it.
 3. Each is watched to fail under a mutant.
 4. Live, on a machine whose memory still says JARVIS (520): "who are you" answers with the given name and no "(JARVIS)".
+
+**E.NAME1b — RESULT: built.** Suite 2176/0.
+- **The line.** `persona` adds "Your name is {name}. If your memory or earlier turns show you using another name, that was an earlier name — say {name}." only when the name is not the legacy one (case-insensitive).
+- **Test.** `a_renamed_mind_is_told_its_old_name_was_an_earlier_one`: "Yantrik Mind" carries the line; `default_persona`, `persona("jarvis", …)` and `persona("", …)` do not.
+- **Mutants, each watched to fail:** M1 never told; M2 always told; M3 case-sensitive compare.
+- **Still to confirm live:** a machine whose memory still says JARVIS (520).
