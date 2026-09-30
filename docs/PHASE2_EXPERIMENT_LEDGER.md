@@ -11173,3 +11173,36 @@ So main moving would have carried all 132 commits, including the yantrikdb 0.21.
 - **Left behind:** 2 arena events on 30 Sep, kept deliberately (`--keep-events`).
 
 **Follow-up (07's, harness_arena):** `--preflight` seeds the fixture when it is missing, and control reports "fixture missing" rather than a failed correct run.
+
+## E.JUDGE1 — PREREG (plan only, nothing built): a local decision model for the Mind's small judgments
+
+**Offered by yantrik-os-07** (2026-09-30): Ollama 0.35.0 at `http://192.168.4.35:11434/v1/systemone` (a LAN PC, 3090 Ti), models `nimble` (9.5 GB) and `tev1` (4.5 GB). It speaks Jev's wire: `state`, then a `choice` (2–26 options), `noul` or `score` question.
+
+**07's numbers:**
+- **"Reply finished?"**, 8 phrasings × 3, warm: p50 150–156 ms, p95 174–189 ms, 24/24, 0 confidently wrong.
+- **Cold load:** 34 s for nimble, 3.5 s for tev1.
+- **In parallel:** calls queue, ~8 per second.
+- **Tool routing**, 14 requests × 25 options: both 11/14 top-1. At p ≥ 0.7, nimble was followed 9 times with 1 confident miss; tev1 6 times, 6/6 right.
+
+**Why this is a hypothesis and not a plan:**
+- The Mind's rules make these calls in 0 ms and deterministically. A judge earns its latency only where the rules are blind.
+- 8 invented phrasings share whatever misconception wrote them (see "synthetic cases share your misconception").
+- A person's machine has no 3090 on the LAN, so the judge can only ever be an option.
+
+**Candidates**, where the rules are blind today:
+- **(a) Premature endings.** A turn ends when the model chooses no tool. The F-rules catch only a missing file and an unsaved document.
+- **(b) Near repeats.** The repeat guard matches exact signatures after F40's folding.
+- **(c) Narrowing the tools** offered to the cloud model, at most 26.
+
+**Method:**
+1. **Label real cases by outcome, not by me.** Take the turn endings, repeat decisions and tool choices from arena readings (T1–T7 and the harder set, where the grader supplies the label) and from 520's Mind log.
+2. **Shadow first.** The judge runs beside the rules, its verdict is logged and never acted on, and the ledger compares the two against outcomes.
+3. **Build a live path only for a candidate that passes.**
+
+**Kill criteria, per candidate:**
+- **Fewer than 5 real cases where the rules and the judge disagree:** killed. There is nothing to gain.
+- **Where they disagree, the outcome must side with the judge more often than with the rules.** A judge that is confidently wrong (p ≥ 0.7) about a *correct* ending or call counts double, because it costs the person a turn.
+- **Latency:** p95 ≤ 250 ms warm, in series. Any call over a 1 s budget, including a cold load, falls back to the rules within the turn, and a test shows an unreachable host behaves exactly as today.
+- **Consent:** off unless the person names the endpoint (`YM_JUDGE_URL`). Nothing is sent to a judge by default.
+
+**Next:** harvest and label the real cases for (a) and (b) from the arena JSONL and 520's log, then run both models over them offline. No Mind code changes until a candidate passes.
