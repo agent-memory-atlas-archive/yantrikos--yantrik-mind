@@ -11313,3 +11313,25 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
   - M-A: the lane is handed `"ollama"` again, and it fails at the no-header assert.
   - M-B: companion's `generic_openai.rs` goes back to the pre-#1 version (Ollama auth "none"), and it fails at the gated assert. So the test depends on the merged library.
 - **Suite:** 2167 passed, 0 failed.
+
+## E.PAIR1 — PREREG: a Mind with its web UI off mints and prints no registration code
+
+**Found by yantrik-os-07 on VM 561** (the live instance, first start of 371bedb): the journal carried `[web-ui] first-time registration code: …`, and `web-pairing.code` was written, although the unit sets `YM_WEBUI=off` and `YM_WEB=off` and nothing listened except 127.0.0.1:7440. 07 deleted the file. The code stays in the journal, which anyone in the journal group can read.
+
+**Cause:** `ensure_pairing_code` runs at boot in both channel modes (telegram.rs:1835, :1984), *before* and independently of `YM_WEBUI=off`. That check lives only inside `spawn_webui_server`. The code is a credential: it registers a browser as a device. Every reader of it is in web.rs's web-UI routes (`/api/pair`, setup), so with the web UI off the code has no use and is only exposure.
+
+**Plan:**
+- One `webui_enabled(env)` switch, used by both functions.
+- `pairing_code_at(dir, enabled, browser_paired)`:
+  - when off, removes any stale code file, prints no code, and mints nothing;
+  - when on, keeps today's behaviour exactly.
+
+**Kill criteria:**
+1. Off: no file is written, a stale file from an earlier start is removed, and nothing is minted.
+2. On, with no paired browser: a code is minted, written with mode 0600 on unix, and returned.
+3. On, with a paired browser: the file is removed.
+4. `YM_WEBUI` values: `off` disables; unset and anything else enable, as today.
+5. Each is watched to fail under a mutant.
+6. Live: a 561 or 520 restart with `YM_WEBUI=off` shows no code line in the journal and no file.
+
+**Existing exposure:** 561's journal already holds one code from its first start. 07 deleted the file. With the web UI off there is no endpoint to redeem it, so it cannot pair anything. After this fix no new ones are printed.
