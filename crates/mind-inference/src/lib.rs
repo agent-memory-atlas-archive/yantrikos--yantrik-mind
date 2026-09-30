@@ -2781,12 +2781,9 @@ pub fn brain_pool_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
         let (url, model) = spec
             .split_once('|')
             .map_or((spec, "gemma4:e4b"), |(u, m)| (u.trim(), m.trim()));
-        let be = yantrik_ml::GenericOpenAIBackend::for_provider(
-            "ollama",
-            url,
-            Some("ollama".to_string()),
-            model,
-        );
+        // E.LKEY1: a pool entry carries no key, so none is sent -- never a placeholder a gateway
+        // that checks the bearer would refuse.
+        let be = yantrik_ml::GenericOpenAIBackend::for_provider("ollama", url, None, model);
         links.push(Arc::new(be) as Arc<dyn LLMBackend>);
         labels.push(format!("ollama-local:{model}"));
         weights.push(weight);
@@ -2870,6 +2867,13 @@ pub(crate) fn retry_wait(detail: &str, attempt: u32, waited_ms: u64) -> Option<u
     None
 }
 
+/// E.LKEY1: the local lane's key -- what the person set, trimmed, or nothing. Never a placeholder:
+/// once yantrik-ml sends an Ollama key as a Bearer header, a made-up one is refused by any gateway
+/// that checks it.
+fn local_ollama_key(get: &dyn Fn(&str) -> Option<String>) -> Option<String> {
+    get("YM_LOCAL_OLLAMA_KEY").map(|k| k.trim().to_string()).filter(|k| !k.is_empty())
+}
+
 pub fn local_backend_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
     // A config-defined multi-endpoint brain pool takes precedence: it becomes the local lane (private
     // + primary) with the chosen failover / round-robin / weighted backup strategy.
@@ -2886,8 +2890,9 @@ pub fn local_backend_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
     // POSTs to <url>/chat/completions (missing /v1 → 404, or /v1 → 307 redirect) AND can't turn off
     // the qwen thinking preamble (OpenAI-compat ignores `think`, burning ~10s/turn). The "ollama"
     // preset routes to native /api/chat, sends `think:false` (fast, clean content), passes tools for
-    // the agent loop, and needs no auth. YM_LOCAL_OLLAMA_KEY is accepted but unused (auth "none").
-    let key = std::env::var("YM_LOCAL_OLLAMA_KEY").unwrap_or_else(|_| "ollama".to_string());
+    // the agent loop. A plain Ollama needs no auth; a gateway in front of one (the live instance's
+    // sealed gate) needs `YM_LOCAL_OLLAMA_KEY`, sent as a Bearer header to this address only.
+    let key = local_ollama_key(&|k| std::env::var(k).ok());
     // Thinking is a per-workload quality/latency lever on qwen3.6 MoE (binary; reasoning_effort
     // levels don't scale — ollama maintainer, 2026-07-21). Blanket thinking-ON measured ~96s even
     // for a trivial turn (the agent loop multiplies the reasoning chain across steps) — unusable
@@ -2905,7 +2910,7 @@ pub fn local_backend_from_env() -> Option<(Arc<dyn LLMBackend>, String)> {
     let label = format!("ollama-local:{model}");
     Some((
         Arc::new(
-            yantrik_ml::GenericOpenAIBackend::for_provider("ollama", &url, Some(key), model)
+            yantrik_ml::GenericOpenAIBackend::for_provider("ollama", &url, key, model)
                 .with_thinking(think),
         ) as Arc<dyn LLMBackend>,
         label,
@@ -3464,6 +3469,28 @@ mod privacy_tests {
             !local.contains("StrictOpenAiBackend"),
             "the local lane must not be wrapped by the strict adapter"
         );
+    }
+
+    /// E.LKEY1: the local lane sends the key the person set, and nothing when they set none.
+    #[test]
+    fn the_local_key_is_the_persons_or_none() {
+        let env = |v: Option<&'static str>| move |k: &str| (k == "YM_LOCAL_OLLAMA_KEY").then_some(v).flatten().map(String::from);
+        assert_eq!(local_ollama_key(&env(None)), None, "no key set must send no key");
+        assert_eq!(local_ollama_key(&env(Some("  "))), None, "a blank key is no key");
+        assert_eq!(local_ollama_key(&env(Some(" inst-key-1234 "))).as_deref(), Some("inst-key-1234"));
+    }
+
+    /// E.LKEY1: no placeholder key is handed to an ollama backend anywhere in this file -- a gateway
+    /// that checks the bearer would refuse `Bearer ollama` (yantrik-ml #525 starts sending it). The
+    /// whole file is scanned: test modules sit between code here, and the patterns below are escaped
+    /// in this source, so they never match themselves.
+    #[test]
+    fn no_placeholder_key_reaches_an_ollama_backend() {
+        const SRC: &str = include_str!("lib.rs");
+        let squashed: String = SRC.split_whitespace().collect();
+        for bad in ["Some(\"ollama\".to_string())", "Some(\"ollama\".into())", "unwrap_or_else(|_|\"ollama\".to_string())"] {
+            assert!(!squashed.contains(bad), "a placeholder key is still built: {bad}");
+        }
     }
 
     #[test]

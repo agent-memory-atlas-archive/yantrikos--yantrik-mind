@@ -11291,3 +11291,14 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 4. Live, once #525 is in the yantrik-ml the Mind builds from: 561's local lane answers with the key set, and a plain Ollama with no key sees no `Authorization` header.
 
 **Build note:** the Mind builds yantrik-ml as a path dependency from `../yantrik-companion`, not from yantrik-os, so #525 must land in yantrik-companion for the Mind to get it. The staging build box's companion checkout is at dd7b702 (09-23), behind the local de262d9 (09-28).
+
+**E.LKEY1 — RESULT: built, and every kill criterion held so far.** Full suite: 2166 passed, 0 failed.
+- `local_ollama_key(env)`: the trimmed `YM_LOCAL_OLLAMA_KEY`, or `None` when unset or blank. `local_backend_from_env` passes it through.
+- `brain_pool_from_env` passes `None`.
+- The comment now says a gateway in front of Ollama needs the key and gets it only at its own address.
+- **Tests:**
+  - `the_local_key_is_the_persons_or_none`: unset → `None`; blank → `None`; `" inst-key-1234 "` → `"inst-key-1234"`.
+  - `no_placeholder_key_reaches_an_ollama_backend`: a whitespace-squashed scan of the whole file. Test modules sit between code in this file (`privacy_tests` at 3004 comes before `mod tests`), so cutting at a test module would have skipped real code. The patterns are escaped in source and never match themselves.
+- **Mutants, each watched to fail its test:** M1 the placeholder back in the local lane; M2 back in the pool; M3 a blank key kept; M4 the key not trimmed.
+- **With today's yantrik-companion yantrik-ml** (Ollama auth "none"), nothing changes on the wire.
+- **Still to confirm live,** once the yantrik-companion change is merged and the staging build box's companion checkout is updated: 561's local lane authenticates, and a plain Ollama receives no `Authorization` header.
