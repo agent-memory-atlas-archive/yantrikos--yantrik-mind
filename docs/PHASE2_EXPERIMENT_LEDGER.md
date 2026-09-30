@@ -11436,3 +11436,10 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 The turn is in Pranab's chat on 520, because he was at the seat.
 
 E.NAME1 and E.NAME1b are closed.
+
+## Mind gate on yantrik-os 08467e0e (#525, #526, #528, #529, #530): PASS
+
+- **Setup:** Mind c7d470b (sha256 1af045e8…), running under #526's launcher. At yantrik-os-07's request before promoting to the public nightly. Pranab's desktop session was open (blender, chromium, foot, weather), and he approved the run, relayed by 07. I rechecked the seat and fixture just before starting.
+- **Results, 23:41–23:45 UTC:** control OK, preflight OK. T1–T7 at one rep: 7/7, 0 false claims, median 6.4 s (T1 5.4, T2 4.1, T3 6.4, T4 5.1, T5 11.5, T6 13.7, T7 10.4).
+- **Pranab's session afterwards:** every window he had open was still open, and none was closed.
+- **Left behind:** one arena event on 30 Sep (`--keep-events`), and the arena's `~/arena-min75w` files.
