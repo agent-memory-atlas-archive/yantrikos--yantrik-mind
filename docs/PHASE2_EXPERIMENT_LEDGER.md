@@ -11265,3 +11265,29 @@ Which wording is right cannot be settled on the set the wordings were tuned on.
 2. **An explicit decision on the latency limit,** made with those numbers in hand, since about 300 ms p95 is intrinsic on this hardware. The trade-off to weigh: one check per ended turn, on turns of 4–15 s, adds 2–7%.
 
 No Mind code was written.
+
+## E.LKEY1 — PREREG: the local lane sends the person's key, and never a placeholder
+
+**Why now:** yantrik-os-07's PR #525 makes yantrik-ml send an Ollama endpoint's key as `Authorization: Bearer`. The live instance (VM 561) reaches its local model through a sealed gate at `10.99.0.1:8443` that requires the instance key. Until then, `for_provider("ollama", …)` hard-coded auth "none" (yantrik-companion `generic_openai.rs`), so `YM_LOCAL_OLLAMA_KEY` was "accepted but unused".
+
+**What that change would do to the Mind as it stands:** two sites hand the backend a placeholder key.
+- `local_backend_from_env` defaults to `"ollama"` when `YM_LOCAL_OLLAMA_KEY` is unset.
+- `brain_pool_from_env` passes `Some("ollama")` for every pool entry.
+
+After #525, every local and pool call would send `Bearer ollama`. A plain Ollama ignores it. A gateway that checks the bearer, such as AIG, which the pool can name, would answer 401 where it answered before. That is a true mechanism, not an observed failure.
+
+**Plan:**
+- `local_ollama_key(env)` returns the trimmed `YM_LOCAL_OLLAMA_KEY`, or `None` when it is unset or blank.
+- The pool passes `None`, since a pool entry carries no key.
+- A scan fails the build on a placeholder key handed to an ollama backend.
+- The comment says what the lane does.
+
+With today's yantrik-ml ("none"), behaviour is unchanged.
+
+**Kill criteria:**
+1. Unset or blank gives `None`; set gives exactly the trimmed value.
+2. No `Some("ollama"…)` key reaches `for_provider("ollama"` outside tests.
+3. Each is watched to fail under a mutant.
+4. Live, once #525 is in the yantrik-ml the Mind builds from: 561's local lane answers with the key set, and a plain Ollama with no key sees no `Authorization` header.
+
+**Build note:** the Mind builds yantrik-ml as a path dependency from `../yantrik-companion`, not from yantrik-os, so #525 must land in yantrik-companion for the Mind to get it. The staging build box's companion checkout is at dd7b702 (09-23), behind the local de262d9 (09-28).
