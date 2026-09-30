@@ -11139,3 +11139,27 @@ Each is watched to fail under a mutant.
   - M4: a full direct page is not accepted.
   - M5: any value allows.
 - **Still to confirm live:** on 520, the same example.org fetch shows example.org and no r.jina.ai in 07's ledger.
+
+**E.READER1 — LIVE on 520: confirmed by the egress ledger.** Build 8e6fc34, sha256 75a2a4dc2624e4e3. The `web_fetch https://example.org` turn ran at 04:44:38 UTC. yantrik-os-07 read seen.json:
+- `example.org` went 1 → 2, last seen 04:44:38.
+- `r.jina.ai` stayed at 1, last seen 04:16:26, before the install. The third-party hop is gone.
+
+The tool took 0.27 s, against 0.52 s with the hop.
+
+## v0.2.0 — os-shared-memory reaches main
+
+Pranab asked to push to main and tag (2026-09-30). Two things were put to him first.
+
+**1. The harm-gate wall.** CI's `harm-gate-guard` blocks any change to `crates/mind-governance` as human-only, and the branch touches it in 2 commits:
+- `5612152`: the secret check covers `LocalControl`, which only makes it stricter. The risk-policy change is comment-only. It adds 3 tests: a local, reversible, low-risk action runs; an outward one asks even when it claims low risk; one that admits risk or irreversibility asks.
+- `e5da6aa`: `weft.rs` makes its 2 HTTP calls through `mind-net`.
+
+He read the diff and **signed off.** The check failing on this merge is his reviewed exception, not a bypass. It was also put to him that the loosening, where desktop actions run without a "yes", lives outside the wall: the `LocalControl` capability in mind-types, and E.WEBGATE1 in mind-conversation.
+
+**2. Production exposure.** A read-only look at .90, which he authorized, found:
+- no `SELF_IMPROVE_OFF`;
+- root's crontab running `self_build_tick.sh` daily at 03:17 with `YM_AUTOMERGE=1`, where a green self-authored PR merges and `self_deploy.sh` then builds main onto .90.
+
+So main moving would have carried all 132 commits, including the yantrikdb 0.21.2 → 0.23.0 migration of the family mind.db, to production on the next green tick. **On his word, the kill switch was set** (04:51:30 UTC; no tick was running). Self-build, auto-merge and self-deploy are halted on .90 until someone deletes the file. Production moves only on his word, after the mind.db upgrade is tested on a backup copy.
+
+**The release.** Workspace version 0.1.0 → 0.2.0, with RELEASE_NOTES.md rewritten for v0.2.0; its upgrade section leads with the mind.db migration and backup. Suite 2164/0. Main is fast-forwarded to the tested commits and tagged `v0.2.0`.

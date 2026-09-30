@@ -2169,7 +2169,7 @@ checksum = "6877bb514081ee2a7ff5ef9de3281f14a4dd4bceac4c09388074a6b5df8a139a"
 
 [[package]]
 name = "mind-agents"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2187,7 +2187,7 @@ dependencies = [
 
 [[package]]
 name = "mind-conversation"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2213,7 +2213,7 @@ dependencies = [
 
 [[package]]
 name = "mind-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2246,11 +2246,11 @@ dependencies = [
 
 [[package]]
 name = "mind-cortex"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-evals"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mind-agents",
  "mind-conversation",
@@ -2272,11 +2272,11 @@ dependencies = [
 
 [[package]]
 name = "mind-evolution"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-governance"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "chrono",
@@ -2293,11 +2293,11 @@ dependencies = [
 
 [[package]]
 name = "mind-identity"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-inference"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "chrono",
@@ -2312,11 +2312,11 @@ dependencies = [
 
 [[package]]
 name = "mind-instincts"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-memory"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "mind-spec",
@@ -2332,7 +2332,7 @@ dependencies = [
 
 [[package]]
 name = "mind-memory-mcp"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "axum",
@@ -2350,14 +2350,14 @@ dependencies = [
 
 [[package]]
 name = "mind-net"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "ureq 2.12.1",
 ]
 
 [[package]]
 name = "mind-observability"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mind-types",
  "serde",
@@ -2367,15 +2367,15 @@ dependencies = [
 
 [[package]]
 name = "mind-perception"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-proactive"
-version = "0.1.0"
+version = "0.2.0"
 
 [[package]]
 name = "mind-recipes"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2391,7 +2391,7 @@ dependencies = [
 
 [[package]]
 name = "mind-spec"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mind-types",
  "serde",
@@ -2402,7 +2402,7 @@ dependencies = [
 
 [[package]]
 name = "mind-tools"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2426,7 +2426,7 @@ dependencies = [
 
 [[package]]
 name = "mind-types"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "async-trait",
  "serde",
@@ -2436,7 +2436,7 @@ dependencies = [
 
 [[package]]
 name = "mind-world"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "mind-types",
  "serde",
