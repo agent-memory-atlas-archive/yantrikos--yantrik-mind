@@ -11396,3 +11396,11 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
   - M5: `engine()` goes back to the legacy persona.
   - M6: no 40-character cap.
 - **OS side, yantrik-os #526 (07):** `yantrik-mind-launch` fills in `YM_MIND_NAME=Yantrik Mind` and `YM_OPERATOR` (the machine's one person's GECOS name), only where the Mind's own settings leave them out. It is running on 561. Turn 2 there already said "extension of Yantrik Live", so the operator half is live; the name waits on this build.
+
+**E.PAIR1 — LIVE on VM 561: PASS** (yantrik-os-07). Bundle 3548aae, sha256 17d80314…, which carries c825026. After the restart with `YM_WEBUI=off`, this boot's journal has 0 `first-time registration` lines and there is no `web-pairing.code`. 371bedb had written both on every start.
+
+**E.NAME1 — LIVE on 561: half.** The environment has `YM_MIND_NAME=Yantrik Mind` and `YM_OPERATOR=Yantrik Live`. "Who are you?" answers "I'm Yantrik Mind (JARVIS), an AI companion and extension of Yantrik Live…", both in the old chat and after `new_chat` (2 messages, so none of the earlier JARVIS turns are in the conversation).
+- **The new name and the person are used.** "(JARVIS)" is still there.
+- **The code path is ruled out.** A list of every "JARVIS" in non-test code: the chat persona now takes `YM_MIND_NAME`; `myself` (`self_configuration`) carries no name; the only remaining prompt, the forecaster (foresight.rs:669), is not part of a chat turn.
+- **Hypothesis, not yet a finding:** 561's memory holds its first two answers ("I am JARVIS…"), and recall surfaces them for "who are you". I asked 07 for a read-only grep of mind.db, and the debug log's recalled lines if they exist, before anything is moved aside.
+- **Planned only if the hypothesis holds (E.NAME1b):** when a Mind has a name other than the legacy one, the persona says that any other name in its memory was an earlier name. Any install that ran an older build and then gets `YM_MIND_NAME` has the same memory.
