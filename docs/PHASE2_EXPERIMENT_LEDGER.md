@@ -11335,3 +11335,43 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 6. Live: a 561 or 520 restart with `YM_WEBUI=off` shows no code line in the journal and no file.
 
 **Existing exposure:** 561's journal already holds one code from its first start. 07 deleted the file. With the web UI off there is no endpoint to redeem it, so it cannot pair anything. After this fix no new ones are printed.
+
+**E.PAIR1 — RESULT: built, and every kill criterion held except the live check.** c825026. Suite 2170/0.
+- **The shape:** `webui_enabled(env)` is the one switch for `spawn_webui_server` and `ensure_pairing_code`. `pairing_code_at(dir, enabled, browser_paired)`: off, or a browser already paired, removes the file and mints nothing; an open code is kept, not re-minted. The file is written through `write_secret_600`, so it is 0600 from creation, not chmodded after the write.
+- **Tests:**
+  - `a_mind_with_its_web_ui_off_holds_no_registration_code`: nothing written; a stale file is removed.
+  - `with_the_web_ui_on_registration_opens_until_a_browser_pairs`: minted, returned, 0600 on unix, kept on a second start, removed on pairing.
+  - `only_off_turns_the_web_ui_off`.
+- **Mutants, each watched to fail its test:**
+  - M1: off still mints, the 561 defect.
+  - M2: off leaves a stale code.
+  - M3: an empty value also turns it off.
+  - M4: a paired browser leaves the file.
+  - M5: an open code is re-minted.
+  - M6: no 0600 at creation, run on staging because it is unix-only; it fails at the mode assert.
+- **Live:** still to confirm on the next restart with `YM_WEBUI=off`.
+
+**E.LKEY1 — LIVE on VM 561, confirmed by yantrik-os-07.** Bundle 371bedb (sha256 817f7b3e…), installed the ISO way; the lane is `ollama-local:qwen3.8:27b` → `10.99.0.1:8443` with the instance key → AIG (bonsai2-27b). The first turn made every model call and got no 401. Before enabling, 07 had checked the gate from the Mind's account through its egress proxy: 200 with the key, 401 without.
+
+## E.NAME1 — PREREG: the Mind's persona says the name it was given
+
+**Seen on 561's first live turn:** "I am JARVIS, an AI companion and extension of the user." The instance is a public live instance, and its person is not "the user".
+
+**Cause:**
+- `mind_types::default_persona` hard-codes "You are JARVIS — an AI companion and extension of {op}".
+- The name chosen at setup (`mind.name`, written by the web UI's registration) is read only by the web UI.
+- `YM_OPERATOR` exists but is unset on 561.
+- The recipe planner's system line also says "You are JARVIS's task planner".
+
+**Plan:**
+- The persona takes a name. `engine()` resolves it from `YM_MIND_NAME`, then `mind.name` in the state folder, then the legacy "JARVIS". So existing installs, production's family Mind included, keep their name unchanged.
+- The name is one line, trimmed, at most 40 characters (the web UI's own limit).
+- The recipe planner's line carries no name.
+- The OS unit sets `YM_MIND_NAME` and `YM_OPERATOR`. Those values are the OS's and Pranab's to choose.
+
+**Kill criteria:**
+1. Resolution order: env, then file, then legacy. A blank value is ignored. A newline or overlong value is reduced to its first line, within 40 characters.
+2. The persona built with a name contains that name and the operator's, and no "JARVIS".
+3. No non-test prompt says "You are JARVIS".
+4. Each is watched to fail under a mutant.
+5. Live: on 561 with `YM_MIND_NAME` set, "who are you" answers with the given name.
