@@ -11090,3 +11090,9 @@ yantrik-os #503 (on 520, audit mode) routes the Mind account through `yantrik-eg
   - M2 (loopback proxied) was watched to fail.
   - **M1 (a bare call put back) first survived.** The scan stopped at a file's *first* `#[cfg(test)]`, and `broker.rs` has an item-level one at line 36, so everything below it went unscanned. Both this scan and E.ROOT1's now stop only where `#[cfg(test)]` opens a `mod`. Both still pass with the wider coverage, and M1 then failed.
 - **Still to confirm live:** on 520, 07's ledger shows the tools' hosts after install. Whether the proxied agent really uses the proxy is checked there, not by a unit test.
+
+## Mind gate on yantrik-os acd71ca (#513 + #515): PASS
+
+- **Setup:** Mind 4128222 (sha256 8042a0292a637704), on 520. The gate was run at yantrik-os-07's request before promoting to the public nightly.
+- **Results:** control OK, preflight OK. T1–T7 at one rep: 7/7, 0 false claims, median 12.9 s (T1 12.9, T2 6.5, T3 6.6, T4 10.3, T5 18.2, T6 15.5, T7 15.2).
+- **Left behind:** 40 arena events on 30 Sep, kept deliberately (`--keep-events`, yantrik-os #201).
