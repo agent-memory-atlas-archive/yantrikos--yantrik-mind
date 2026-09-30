@@ -515,10 +515,13 @@ pub fn handle_messages(w: &mut impl Write, body: &str) {
     let asked_model = oa["model"].as_str().unwrap_or(&model).to_string();
     let streaming = oa["stream"].as_bool() == Some(true);
     let url = format!("{}/chat/completions", upstream_base());
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(std::time::Duration::from_secs(20))
-        .timeout_read(std::time::Duration::from_secs(600))
-        .build();
+    // E.EGRESS1: through the machine's egress proxy unless the upstream is on this machine.
+    let agent = mind_net::route(
+        mind_net::builder()
+            .timeout_connect(std::time::Duration::from_secs(20))
+            .timeout_read(std::time::Duration::from_secs(600)),
+        &url,
+    );
 
     // E.LANE1: step through the lane's models while THIS model is the thing that failed. The whole
     // loop sits before the first byte reaches `w` (K9) — once a stream has begun, a failover would

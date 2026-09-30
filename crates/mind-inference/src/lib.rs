@@ -1807,7 +1807,7 @@ fn nanogpt_weekly_pct() -> Option<f64> {
         .ok()
         .filter(|k| !k.trim().is_empty());
     let v: Option<f64> = key.and_then(|key| {
-        ureq::get("https://nano-gpt.com/api/subscription/v1/usage")
+        mind_net::get("https://nano-gpt.com/api/subscription/v1/usage")
             .set("x-api-key", &key)
             .timeout(std::time::Duration::from_secs(8))
             .call()
@@ -2577,7 +2577,7 @@ pub fn render_role_plan(plan: &[RoleRoute], checks: Option<&[ModelCheck]>) -> St
 pub fn fetch_model_catalogue(base_url: &str, provider: &str) -> Result<Vec<String>, String> {
     let key_env = provider_catalog(provider).map(|(_, k, _)| k).unwrap_or("");
     let url = format!("{}/models", base_url.trim_end_matches('/'));
-    let mut req = ureq::get(&url).timeout(std::time::Duration::from_secs(20));
+    let mut req = mind_net::get(&url).timeout(std::time::Duration::from_secs(20));
     if let Some(key) = configured_api_key(key_env) {
         req = req.set("Authorization", &format!("Bearer {key}"));
     }

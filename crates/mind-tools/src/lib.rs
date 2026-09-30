@@ -478,7 +478,7 @@ fn compact_blanks(text: &str) -> String {
 
 /// Direct fetch with real browser headers + redirect-following → declutter → readable text.
 fn fetch_direct(url: &str) -> anyhow::Result<String> {
-    let resp = ureq::get(url)
+    let resp = mind_net::get(url)
         .timeout(std::time::Duration::from_secs(20))
         .set("User-Agent", BROWSER_UA)
         .set(
@@ -557,7 +557,7 @@ fn fetch_headful(url: &str) -> anyhow::Result<String> {
 /// markdown — getting content from sites that block our direct request (bot/TLS/JS walls). The target
 /// is already SSRF-checked + public; the fetched text remains untrusted reference data.
 fn fetch_reader(url: &str) -> anyhow::Result<String> {
-    let resp = ureq::get(&format!("https://r.jina.ai/{url}"))
+    let resp = mind_net::get(&format!("https://r.jina.ai/{url}"))
         .timeout(std::time::Duration::from_secs(30))
         .set("User-Agent", BROWSER_UA)
         .set("X-Return-Format", "markdown")
@@ -962,7 +962,7 @@ impl VisionClient {
                         body["think"] = serde_json::json!(false);
                         body["chat_template_kwargs"] = serde_json::json!({ "enable_thinking": false });
                     }
-                    Ok(ureq::post(&format!("{base}/api/chat"))
+                    Ok(mind_net::post(&format!("{base}/api/chat"))
                         .set("content-type", "application/json")
                         .timeout(std::time::Duration::from_secs(600))
                         .send_json(body)?
@@ -981,7 +981,7 @@ impl VisionClient {
                         { "type": "image_url", "image_url": { "url": format!("data:{mime};base64,{b64}") } }
                     ]}]
                 });
-                let resp: serde_json::Value = ureq::post(&format!("{base}/chat/completions"))
+                let resp: serde_json::Value = mind_net::post(&format!("{base}/chat/completions"))
                     .set("authorization", &format!("Bearer {key}"))
                     .set("content-type", "application/json")
                     .timeout(std::time::Duration::from_secs(120))
@@ -1006,7 +1006,7 @@ pub async fn fetch_image_bytes(url: &str) -> Option<Vec<u8>> {
         use std::io::Read;
         ssrf_check(&url).ok()?;
         let mut buf = Vec::new();
-        ureq::get(&url)
+        mind_net::get(&url)
             .timeout(std::time::Duration::from_secs(30))
             .call()
             .ok()?
@@ -1092,7 +1092,7 @@ impl FbClient {
             self.token
         );
         tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-            Ok(ureq::get(&url)
+            Ok(mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .call()?
                 .into_json()?)
@@ -1125,7 +1125,7 @@ impl FbClient {
             self.token
         );
         tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-            Ok(ureq::get(&url)
+            Ok(mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .call()?
                 .into_json()?)
@@ -1140,7 +1140,7 @@ impl FbClient {
         );
         let v: serde_json::Value =
             tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-                Ok(ureq::get(&url)
+                Ok(mind_net::get(&url)
                     .timeout(std::time::Duration::from_secs(30))
                     .call()?
                     .into_json()?)
@@ -1201,7 +1201,7 @@ impl ImmichClient {
     }
 
     fn get_blocking(base: &str, key: &str, path: &str) -> anyhow::Result<serde_json::Value> {
-        Ok(ureq::get(&format!("{base}{path}"))
+        Ok(mind_net::get(&format!("{base}{path}"))
             .set("x-api-key", key)
             .timeout(std::time::Duration::from_secs(25))
             .call()?
@@ -1226,7 +1226,7 @@ impl ImmichClient {
         let (b, k, pid) = (self.base.clone(), self.key.clone(), person_id.to_string());
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<ImmichAssetRecord>> {
             let body = serde_json::json!({ "personIds": [pid], "size": size, "type": "IMAGE", "withExif": true });
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/search/metadata"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/search/metadata"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(30))
@@ -1243,7 +1243,7 @@ impl ImmichClient {
         tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
             use std::io::Read;
             let mut buf = Vec::new();
-            ureq::get(&format!("{b}/api/assets/{id}/thumbnail?size=preview"))
+            mind_net::get(&format!("{b}/api/assets/{id}/thumbnail?size=preview"))
                 .set("x-api-key", &k)
                 .timeout(std::time::Duration::from_secs(25))
                 .call()
@@ -1627,7 +1627,7 @@ impl ImmichClient {
         tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
             use std::io::Read;
             let mut buf = Vec::new();
-            ureq::get(&format!("{b}/api/people/{id}/thumbnail"))
+            mind_net::get(&format!("{b}/api/people/{id}/thumbnail"))
                 .set("x-api-key", &k)
                 .timeout(std::time::Duration::from_secs(25))
                 .call()
@@ -1666,7 +1666,7 @@ impl ImmichClient {
             if !pids.is_empty() {
                 body["personIds"] = serde_json::json!(pids);
             }
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/search/smart"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/search/smart"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(60))
@@ -1687,7 +1687,7 @@ impl ImmichClient {
         let (b, k, pids) = (self.base.clone(), self.key.clone(), person_ids.to_vec());
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<ImmichAssetRecord>> {
             let body = serde_json::json!({ "personIds": pids, "size": size, "type": "IMAGE", "withExif": true, "order": if oldest_first { "asc" } else { "desc" } });
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/search/metadata"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/search/metadata"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(30))
@@ -1747,7 +1747,7 @@ impl ImmichClient {
             if !pids.is_empty() {
                 body["personIds"] = serde_json::json!(pids);
             }
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/search/metadata"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/search/metadata"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(30))
@@ -1853,7 +1853,7 @@ impl ImmichClient {
     pub async fn create_album(&self, name: &str) -> Option<String> {
         let (b, k, nm) = (self.base.clone(), self.key.clone(), name.to_string());
         tokio::task::spawn_blocking(move || -> Option<String> {
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/albums"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/albums"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(25))
@@ -1879,7 +1879,7 @@ impl ImmichClient {
             ids.to_vec(),
         );
         tokio::task::spawn_blocking(move || -> bool {
-            ureq::put(&format!("{b}/api/albums/{aid}/assets"))
+            mind_net::put(&format!("{b}/api/albums/{aid}/assets"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(60))
@@ -1899,7 +1899,7 @@ impl ImmichClient {
         let (b, k, ids) = (self.base.clone(), self.key.clone(), ids.to_vec());
         tokio::task::spawn_blocking(move || -> bool {
             let body_v2 = serde_json::json!({ "ids": ids, "visibility": if archived { "archive" } else { "timeline" } });
-            let ok = ureq::put(&format!("{b}/api/assets"))
+            let ok = mind_net::put(&format!("{b}/api/assets"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(60))
@@ -1908,7 +1908,7 @@ impl ImmichClient {
             if ok {
                 return true;
             }
-            ureq::put(&format!("{b}/api/assets"))
+            mind_net::put(&format!("{b}/api/assets"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(60))
@@ -1928,7 +1928,7 @@ impl ImmichClient {
             name.to_string(),
         );
         tokio::task::spawn_blocking(move || -> bool {
-            ureq::put(&format!("{b}/api/people/{id}"))
+            mind_net::put(&format!("{b}/api/people/{id}"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(25))
@@ -1949,7 +1949,7 @@ impl ImmichClient {
             source_ids.to_vec(),
         );
         tokio::task::spawn_blocking(move || -> bool {
-            ureq::post(&format!("{b}/api/people/{id}/merge"))
+            mind_net::post(&format!("{b}/api/people/{id}/merge"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(25))
@@ -1965,7 +1965,7 @@ impl ImmichClient {
         let (b, k) = (self.base.clone(), self.key.clone());
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<ImmichAssetRecord>> {
             let body = serde_json::json!({ "size": n, "type": "IMAGE", "order": "desc", "withExif": true });
-            let v: serde_json::Value = ureq::post(&format!("{b}/api/search/metadata"))
+            let v: serde_json::Value = mind_net::post(&format!("{b}/api/search/metadata"))
                 .set("x-api-key", &k)
                 .set("content-type", "application/json")
                 .timeout(std::time::Duration::from_secs(30))
@@ -2301,7 +2301,7 @@ impl FaceEngine {
             body.extend_from_slice(format!("--{boundary}\r\nContent-Disposition: form-data; name=\"image\"; filename=\"img.jpg\"\r\nContent-Type: image/jpeg\r\n\r\n").as_bytes());
             body.extend_from_slice(&image);
             body.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
-            let resp: serde_json::Value = ureq::post(&url)
+            let resp: serde_json::Value = mind_net::post(&url)
                 .set("content-type", &format!("multipart/form-data; boundary={boundary}"))
                 .timeout(std::time::Duration::from_secs(90))
                 .send_bytes(&body)?
@@ -2393,7 +2393,7 @@ pub fn anthropic_subscription_usage() -> Option<serde_json::Value> {
     let tok = std::env::var("CLAUDE_CODE_OAUTH_TOKEN")
         .ok()
         .filter(|k| !k.trim().is_empty())?;
-    let resp = ureq::get("https://api.anthropic.com/api/oauth/usage")
+    let resp = mind_net::get("https://api.anthropic.com/api/oauth/usage")
         .set("Authorization", &format!("Bearer {tok}"))
         .set("anthropic-beta", "oauth-2025-04-20")
         .timeout(std::time::Duration::from_secs(12))
@@ -2410,7 +2410,7 @@ pub fn nanogpt_quota() -> Option<serde_json::Value> {
     let key = std::env::var("NANOGPT_KEY")
         .ok()
         .filter(|k| !k.trim().is_empty())?;
-    ureq::get("https://nano-gpt.com/api/subscription/v1/usage")
+    mind_net::get("https://nano-gpt.com/api/subscription/v1/usage")
         .set("x-api-key", &key)
         .timeout(std::time::Duration::from_secs(12))
         .call()
@@ -2425,7 +2425,7 @@ pub fn nanogpt_balance() -> Option<(f64, f64)> {
     let key = std::env::var("NANOGPT_KEY")
         .ok()
         .filter(|k| !k.trim().is_empty())?;
-    let resp: serde_json::Value = ureq::post("https://nano-gpt.com/api/check-balance")
+    let resp: serde_json::Value = mind_net::post("https://nano-gpt.com/api/check-balance")
         .set("x-api-key", &key)
         .timeout(std::time::Duration::from_secs(12))
         .call()

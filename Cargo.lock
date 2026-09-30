@@ -2228,6 +2228,7 @@ dependencies = [
  "mind-inference",
  "mind-memory",
  "mind-memory-mcp",
+ "mind-net",
  "mind-observability",
  "mind-recipes",
  "mind-tools",
@@ -2281,6 +2282,7 @@ dependencies = [
  "chrono",
  "ed25519-dalek",
  "getrandom 0.2.17",
+ "mind-net",
  "mind-types",
  "serde",
  "serde_json",
@@ -2299,6 +2301,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "chrono",
+ "mind-net",
  "mind-types",
  "serde_json",
  "tokio",
@@ -2343,6 +2346,13 @@ dependencies = [
  "tower",
  "tracing",
  "tracing-subscriber",
+]
+
+[[package]]
+name = "mind-net"
+version = "0.1.0"
+dependencies = [
+ "ureq 2.12.1",
 ]
 
 [[package]]
@@ -2402,6 +2412,7 @@ dependencies = [
  "image",
  "imap",
  "lettre",
+ "mind-net",
  "mind-types",
  "native-tls",
  "serde",

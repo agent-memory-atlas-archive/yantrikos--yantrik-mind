@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+# E.EGRESS1: every HTTP request routes through the machine's egress proxy (loopback direct).
+mind-net = { workspace = true }
 mind-types = { workspace = true }
 async-trait = { workspace = true }
 serde = { workspace = true }

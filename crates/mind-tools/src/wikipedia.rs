@@ -36,7 +36,7 @@ impl WikiClient for Wikipedia {
         let max = self.chars;
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
             // search + intro extract in one request (generator=search → prop=extracts)
-            let v: serde_json::Value = ureq::get("https://en.wikipedia.org/w/api.php")
+            let v: serde_json::Value = mind_net::get("https://en.wikipedia.org/w/api.php")
                 .timeout(std::time::Duration::from_secs(15))
                 .set("User-Agent", "yantrik-mind/1.0")
                 .query("action", "query")

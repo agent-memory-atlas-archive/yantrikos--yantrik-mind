@@ -57,7 +57,7 @@ impl WebSearch for DdgSearch {
         let q = query.to_string();
         let want = limit.min(self.max).max(1);
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<SearchHit>> {
-            let resp = ureq::post("https://html.duckduckgo.com/html/")
+            let resp = mind_net::post("https://html.duckduckgo.com/html/")
                 .timeout(std::time::Duration::from_secs(20))
                 .set("User-Agent", "Mozilla/5.0 (compatible; yantrik-mind/1.0)")
                 .send_form(&[("q", q.as_str())])?;
@@ -101,7 +101,7 @@ impl SearxngSearch {
         let url = format!("{}/search", self.base);
         let (q, want) = (query.to_string(), limit.max(1));
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<SearchHit>> {
-            let mut req = ureq::get(&url)
+            let mut req = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(15))
                 .set("User-Agent", "Mozilla/5.0 (compatible; yantrik-mind/1.0)")
                 .query("q", &q)

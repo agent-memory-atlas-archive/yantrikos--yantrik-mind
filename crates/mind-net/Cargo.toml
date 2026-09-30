@@ -1,0 +1,8 @@
+[package]
+name = "mind-net"
+version.workspace = true
+edition.workspace = true
+description = "The one way the Mind reaches the network: through the machine's egress proxy, except loopback and NO_PROXY hosts (E.EGRESS1)."
+
+[dependencies]
+ureq = { version = "2", features = ["json"] }

@@ -120,7 +120,7 @@ fn fetch_uncached() -> QuotaReport {
     // there is one way to ask this question rather than two that can disagree.
     match std::env::var("CLAUDE_CODE_OAUTH_TOKEN") {
         Ok(token) if !token.trim().is_empty() => {
-            let res = ureq::get("https://api.anthropic.com/api/oauth/usage")
+            let res = mind_net::get("https://api.anthropic.com/api/oauth/usage")
                 .timeout(Duration::from_secs(12))
                 .set("Authorization", &format!("Bearer {}", token.trim()))
                 .set("anthropic-beta", "oauth-2025-04-20")

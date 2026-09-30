@@ -23,7 +23,7 @@ async fn tg_get(api: &str, method_query: &str) -> anyhow::Result<serde_json::Val
     // error we bubble up, or the token lands verbatim in the journal (it did; see poll-error logs).
     let api_owned = api.to_string();
     let v = tokio::task::spawn_blocking(move || -> anyhow::Result<serde_json::Value> {
-        let body = ureq::get(&url)
+        let body = mind_net::get(&url)
             .timeout(std::time::Duration::from_secs(35))
             .call()
             .map_err(|e| {
@@ -79,7 +79,7 @@ async fn tg_send(api: &str, chat_id: i64, text: &str) -> anyhow::Result<()> {
         let api_owned = api.to_string();
         let payload = serde_json::json!({ "chat_id": chat_id, "text": chunk });
         tokio::task::spawn_blocking(move || -> anyhow::Result<()> {
-            ureq::post(&url)
+            mind_net::post(&url)
                 .timeout(std::time::Duration::from_secs(30))
                 .send_json(payload)
                 .map_err(|e| {
@@ -102,7 +102,7 @@ async fn tg_typing(api: &str, chat_id: i64) {
     let url = format!("{api}/sendChatAction");
     let payload = serde_json::json!({ "chat_id": chat_id, "action": "typing" });
     let _ = tokio::task::spawn_blocking(move || {
-        let _ = ureq::post(&url)
+        let _ = mind_net::post(&url)
             .timeout(std::time::Duration::from_secs(10))
             .send_json(payload);
     })
@@ -116,7 +116,7 @@ async fn tg_voice_to_text(api: &str, file_id: &str) -> Option<String> {
     let fid = file_id.to_string();
     tokio::task::spawn_blocking(move || -> Option<String> {
         use std::io::Read;
-        let meta: serde_json::Value = ureq::get(&format!("{api_owned}/getFile?file_id={fid}"))
+        let meta: serde_json::Value = mind_net::get(&format!("{api_owned}/getFile?file_id={fid}"))
             .timeout(std::time::Duration::from_secs(30))
             .call()
             .ok()?
@@ -126,7 +126,7 @@ async fn tg_voice_to_text(api: &str, file_id: &str) -> Option<String> {
         // Files download from a sibling host path: /bot<token>/ -> /file/bot<token>/.
         let file_url = format!("{}/{}", api_owned.replacen("/bot", "/file/bot", 1), path);
         let mut bytes = Vec::new();
-        ureq::get(&file_url)
+        mind_net::get(&file_url)
             .timeout(std::time::Duration::from_secs(60))
             .call()
             .ok()?
@@ -339,7 +339,7 @@ async fn tg_download(api: &str, file_id: &str) -> Option<Vec<u8>> {
     let fid = file_id.to_string();
     tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
         use std::io::Read;
-        let meta: serde_json::Value = ureq::get(&format!("{api_owned}/getFile?file_id={fid}"))
+        let meta: serde_json::Value = mind_net::get(&format!("{api_owned}/getFile?file_id={fid}"))
             .timeout(std::time::Duration::from_secs(30))
             .call()
             .ok()?
@@ -348,7 +348,7 @@ async fn tg_download(api: &str, file_id: &str) -> Option<Vec<u8>> {
         let path = meta["result"]["file_path"].as_str()?;
         let file_url = format!("{}/{}", api_owned.replacen("/bot", "/file/bot", 1), path);
         let mut bytes = Vec::new();
-        ureq::get(&file_url)
+        mind_net::get(&file_url)
             .timeout(std::time::Duration::from_secs(60))
             .call()
             .ok()?

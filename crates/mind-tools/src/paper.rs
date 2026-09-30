@@ -127,7 +127,7 @@ pub fn fetch_paper(url: &str) -> anyhow::Result<(String, String)> {
     } else {
         url.to_string()
     };
-    let resp = ureq::get(&fetch_url)
+    let resp = mind_net::get(&fetch_url)
         .set("User-Agent", "Mozilla/5.0 (yantrik-mind research reader)")
         .timeout(std::time::Duration::from_secs(45))
         .call()?;
@@ -173,7 +173,7 @@ pub fn fetch_paper(url: &str) -> anyhow::Result<(String, String)> {
     // /abs/ page — an abstract-grounded study is thinner but honest.
     if clean.len() < 5000 && fetch_url.contains("ar5iv") && url.contains("arxiv.org/") {
         let abs_url = url.replace("/pdf/", "/abs/");
-        if let Ok(resp2) = ureq::get(&abs_url)
+        if let Ok(resp2) = mind_net::get(&abs_url)
             .set("User-Agent", "Mozilla/5.0 (yantrik-mind research reader)")
             .timeout(std::time::Duration::from_secs(30))
             .call()
@@ -282,7 +282,7 @@ pub fn arxiv_search(query: &str, max: usize) -> anyhow::Result<Vec<(String, Stri
     let url = format!(
         "https://export.arxiv.org/api/query?search_query=all:{q}&sortBy=submittedDate&sortOrder=descending&max_results={max}"
     );
-    let body = ureq::get(&url)
+    let body = mind_net::get(&url)
         .set(
             "User-Agent",
             "yantrik-mind research reader (contact: developer@pranab.co.in)",

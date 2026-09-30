@@ -72,7 +72,7 @@ impl Translator for GoogleTranslate {
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
             // sl=auto detects the source; dt=t returns translation segments.
             let v: serde_json::Value =
-                ureq::get("https://translate.googleapis.com/translate_a/single")
+                mind_net::get("https://translate.googleapis.com/translate_a/single")
                     .timeout(std::time::Duration::from_secs(15))
                     .query("client", "gtx")
                     .query("sl", "auto")

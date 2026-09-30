@@ -148,8 +148,16 @@ mod tests {
                     continue;
                 }
                 let text = std::fs::read_to_string(&p).unwrap();
-                for (i, line) in text.lines().enumerate() {
-                    if line.trim_start().starts_with("#[cfg(test)]") {
+                let lines: Vec<&str> = text.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    // Stop at the file's test MODULE -- a `#[cfg(test)]` that opens a `mod`. An
+                    // item-level `#[cfg(test)]` further up (a test-only helper) does not end the
+                    // scan: stopping there hid real code below it (E.EGRESS1's first scan).
+                    let opens_mod = lines.get(i + 1).is_some_and(|n| {
+                        let n = n.trim_start();
+                        n.starts_with("mod ") || n.starts_with("pub mod ") || n.starts_with("pub(crate) mod ")
+                    });
+                    if line.trim_start().starts_with("#[cfg(test)]") && opens_mod {
                         break;
                     }
                     let t = line.trim_start();

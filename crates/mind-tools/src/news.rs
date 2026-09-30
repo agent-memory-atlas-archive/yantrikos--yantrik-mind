@@ -82,7 +82,7 @@ impl NewsClient for GoogleNews {
         };
         let want = limit.clamp(1, 20);
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<NewsItem>> {
-            let xml = ureq::get(&url)
+            let xml = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(20))
                 .set("User-Agent", "Mozilla/5.0 (compatible; yantrik-mind/1.0)")
                 .call()?

@@ -102,7 +102,7 @@ impl WeftAttestor {
     }
 
     fn get(&self, path: &str) -> Result<serde_json::Value, String> {
-        ureq::get(&format!("{}{path}", self.base))
+        mind_net::get(&format!("{}{path}", self.base))
             .timeout(std::time::Duration::from_secs(self.timeout_secs))
             .call()
             .map_err(|e| format!("{path}: {e}"))?
@@ -111,7 +111,7 @@ impl WeftAttestor {
     }
 
     fn post(&self, path: &str, body: &serde_json::Value) -> Result<serde_json::Value, String> {
-        ureq::post(&format!("{}{path}", self.base))
+        mind_net::post(&format!("{}{path}", self.base))
             .timeout(std::time::Duration::from_secs(self.timeout_secs))
             .send_json(body.clone())
             .map_err(|e| format!("{path}: {e}"))?

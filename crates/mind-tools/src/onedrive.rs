@@ -68,7 +68,7 @@ impl OneDriveClient {
     pub async fn begin_auth(&self) -> anyhow::Result<DeviceCode> {
         let client_id = self.client_id.clone();
         tokio::task::spawn_blocking(move || -> anyhow::Result<DeviceCode> {
-            let resp: serde_json::Value = ureq::post(&format!("{AUTH}/devicecode"))
+            let resp: serde_json::Value = mind_net::post(&format!("{AUTH}/devicecode"))
                 .timeout(std::time::Duration::from_secs(20))
                 .send_form(&[("client_id", &client_id), ("scope", SCOPE)])?
                 .into_json()?;
@@ -107,7 +107,7 @@ impl OneDriveClient {
                     return Ok(false);
                 }
                 std::thread::sleep(std::time::Duration::from_secs(interval.max(3)));
-                let resp = ureq::post(&format!("{AUTH}/token"))
+                let resp = mind_net::post(&format!("{AUTH}/token"))
                     .timeout(std::time::Duration::from_secs(20))
                     .send_form(&[
                         ("grant_type", "urn:ietf:params:oauth:grant-type:device_code"),
@@ -155,7 +155,7 @@ impl OneDriveClient {
     fn access(&self, now_secs: i64) -> anyhow::Result<String> {
         let mut tok: OdToken = serde_json::from_str(&std::fs::read_to_string(&self.token_path)?)?;
         if tok.access_token.is_empty() || now_secs >= tok.expires_at - 120 {
-            let j: serde_json::Value = ureq::post(&format!("{AUTH}/token"))
+            let j: serde_json::Value = mind_net::post(&format!("{AUTH}/token"))
                 .timeout(std::time::Duration::from_secs(20))
                 .send_form(&[
                     ("grant_type", "refresh_token"),
@@ -209,7 +209,7 @@ impl OneDriveClient {
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<OdItem>> {
             let token = this.access(now_secs)?;
             let j: serde_json::Value =
-                ureq::get(&format!("{GRAPH}/me/drive/recent?$top={}", n.clamp(1, 200)))
+                mind_net::get(&format!("{GRAPH}/me/drive/recent?$top={}", n.clamp(1, 200)))
                     .set("Authorization", &format!("Bearer {token}"))
                     .timeout(std::time::Duration::from_secs(30))
                     .call()?
@@ -242,7 +242,7 @@ impl OneDriveClient {
             );
             // fall back to a plain recent listing if search misbehaves
             for _page in 0..6 {
-                let j: serde_json::Value = match ureq::get(&url)
+                let j: serde_json::Value = match mind_net::get(&url)
                     .set("Authorization", &format!("Bearer {token}"))
                     .timeout(std::time::Duration::from_secs(30))
                     .call()
@@ -275,7 +275,7 @@ impl OneDriveClient {
         let (this, id) = (self.dupe(), id.to_string());
         tokio::task::spawn_blocking(move || -> Option<Vec<u8>> {
             let token = this.access(now_secs).ok()?;
-            let resp = ureq::get(&format!("{GRAPH}/me/drive/items/{id}/content"))
+            let resp = mind_net::get(&format!("{GRAPH}/me/drive/items/{id}/content"))
                 .set("Authorization", &format!("Bearer {token}"))
                 .timeout(std::time::Duration::from_secs(60))
                 .call()

@@ -145,7 +145,7 @@ pub fn series(symbol: &str, range: &str, interval: &str) -> anyhow::Result<Serie
         "https://query1.finance.yahoo.com/v8/finance/chart/{}?range={range}&interval={interval}",
         urlencoding::encode(symbol.trim())
     );
-    let body: serde_json::Value = ureq::get(&url)
+    let body: serde_json::Value = mind_net::get(&url)
         // A bare request is refused; this endpoint expects to be talking to a browser.
         .set("User-Agent", "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
         .timeout(std::time::Duration::from_secs(25))

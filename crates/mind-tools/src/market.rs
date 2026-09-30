@@ -150,7 +150,7 @@ impl CryptoMarketClient {
         start: &str,
         end: &str,
     ) -> anyhow::Result<Vec<Bar>> {
-        let body: serde_json::Value = ureq::get(&Self::bars_url(symbol, timeframe, start, end))
+        let body: serde_json::Value = mind_net::get(&Self::bars_url(symbol, timeframe, start, end))
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(30))
@@ -160,7 +160,7 @@ impl CryptoMarketClient {
     }
 
     pub fn last_price(&self, symbol: &str) -> anyhow::Result<f64> {
-        let body: serde_json::Value = ureq::get(&Self::latest_trade_url(symbol))
+        let body: serde_json::Value = mind_net::get(&Self::latest_trade_url(symbol))
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(20))
@@ -232,7 +232,7 @@ impl MarketClient {
         end: &str,
     ) -> anyhow::Result<Vec<Bar>> {
         let url = Self::bars_url(&self.base, &self.feed, symbol, timeframe, start, end);
-        let body: serde_json::Value = ureq::get(&url)
+        let body: serde_json::Value = mind_net::get(&url)
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(30))
@@ -249,7 +249,7 @@ impl MarketClient {
             symbol.trim().to_uppercase(),
             self.feed
         );
-        let body: serde_json::Value = ureq::get(&url)
+        let body: serde_json::Value = mind_net::get(&url)
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(20))

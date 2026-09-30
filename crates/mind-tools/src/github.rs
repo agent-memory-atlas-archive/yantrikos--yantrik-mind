@@ -97,7 +97,7 @@ impl GithubClient for ApiGithubClient {
         let per_page = limit.clamp(1, 50);
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<GithubNotification>> {
             let url = format!("https://api.github.com/notifications?per_page={per_page}");
-            let resp = ureq::get(&url)
+            let resp = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(20))
                 .set("Authorization", &format!("Bearer {token}"))
                 .set("Accept", "application/vnd.github+json")
@@ -135,7 +135,7 @@ impl GithubClient for ApiGithubClient {
             let url = format!(
                 "https://api.github.com/repos/{repo}/issues?state=open&sort=created&direction=desc&per_page={per_page}"
             );
-            let mut req = ureq::get(&url)
+            let mut req = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(20))
                 .set("Accept", "application/vnd.github+json")
                 .set("X-GitHub-Api-Version", "2022-11-28")
@@ -179,7 +179,7 @@ impl GithubWriter for ApiGithubClient {
         let (repo, body) = (repo.to_string(), body.to_string());
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
             let url = format!("https://api.github.com/repos/{repo}/issues/{number}/comments");
-            let resp = ureq::post(&url)
+            let resp = mind_net::post(&url)
                 .timeout(std::time::Duration::from_secs(20))
                 .set("Authorization", &format!("Bearer {token}"))
                 .set("Accept", "application/vnd.github+json")

@@ -11077,3 +11077,16 @@ yantrik-os #503 (on 520, audit mode) routes the Mind account through `yantrik-eg
 - With no proxy set, behaviour is unchanged.
 - The scan finds no bare constructions.
 - On 520, 07's ledger shows the tools' destinations (weather, search, fetch) after the install, where it showed none before.
+
+**E.EGRESS1 — RESULT: built, and every kill criterion held so far.** Full suite: 2160 passed, 0 failed.
+- **The new crate `mind-net`:** `get`/`post`/`put` are drop-ins; `agent_for(url)` picks one of two pooled agents; `builder()` plus `route()` cover clients with their own timeouts.
+- **Conversions:** all 86 bare `ureq::get/post/put` calls in mind-core, mind-inference, mind-tools and mind-governance, and the 3 `AgentBuilder` sites (the Anthropic gateway, and first-run's two Ollama checks).
+- **Tests:**
+  - `public_hosts_take_the_proxy_and_loopback_goes_direct` on 520's environment: weather and ollama.com are proxied; 127.0.0.1, all of 127/8, localhost, ::1 and a NO_PROXY `.lan` suffix go direct; a bare LAN name not listed is proxied.
+  - `no_proxy_set_means_nothing_changes`.
+  - `hosts_are_read_the_way_urls_write_them`.
+  - `nothing_reaches_the_network_around_this_crate`, the scan.
+- **Mutants:**
+  - M2 (loopback proxied) was watched to fail.
+  - **M1 (a bare call put back) first survived.** The scan stopped at a file's *first* `#[cfg(test)]`, and `broker.rs` has an item-level one at line 36, so everything below it went unscanned. Both this scan and E.ROOT1's now stop only where `#[cfg(test)]` opens a `mod`. Both still pass with the wider coverage, and M1 then failed.
+- **Still to confirm live:** on 520, 07's ledger shows the tools' hosts after install. Whether the proxied agent really uses the proxy is checked there, not by a unit test.

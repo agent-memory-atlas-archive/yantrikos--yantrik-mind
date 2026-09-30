@@ -72,6 +72,7 @@ yantrik-chat = { path = "../yantrik-companion/crates/yantrik-chat" }
 
 # internal mind-* crates (path)
 mind-types = { path = "crates/mind-types" }
+mind-net = { path = "crates/mind-net" }
 mind-observability = { path = "crates/mind-observability" }
 mind-evals = { path = "crates/mind-evals" }
 mind-governance = { path = "crates/mind-governance" }

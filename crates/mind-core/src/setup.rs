@@ -99,7 +99,7 @@ fn tg_api(token: &str) -> String {
 fn validate_token(token: &str) -> Result<String, String> {
     let api = tg_api(token);
     let masked = |e: String| e.replace(&api, "https://api.telegram.org/bot<token>");
-    let resp: serde_json::Value = ureq::get(&format!("{api}/getMe"))
+    let resp: serde_json::Value = mind_net::get(&format!("{api}/getMe"))
         .timeout(std::time::Duration::from_secs(12))
         .call()
         .map_err(|e| masked(e.to_string()))?
@@ -118,7 +118,7 @@ fn validate_token(token: &str) -> Result<String, String> {
 /// no "doorway" if it can't think (sol: without a brain key main falls silently
 /// to scripted). Hits NanoGPT's models list; 200 = the key authenticates.
 fn validate_brain(key: &str) -> Result<(), String> {
-    let resp = ureq::get("https://nano-gpt.com/api/v1/models")
+    let resp = mind_net::get("https://nano-gpt.com/api/v1/models")
         .set("Authorization", &format!("Bearer {key}"))
         .timeout(std::time::Duration::from_secs(15))
         .call();
@@ -142,7 +142,7 @@ fn await_first_contact(token: &str, code: &str, secs: u64) -> Result<(i64, Strin
     // Drain any stale updates first so an old message can't false-trigger.
     while std::time::Instant::now() < deadline {
         let url = format!("{api}/getUpdates?timeout=20&offset={offset}");
-        let resp: serde_json::Value = match ureq::get(&url)
+        let resp: serde_json::Value = match mind_net::get(&url)
             .timeout(std::time::Duration::from_secs(30))
             .call()
             .ok()
@@ -185,7 +185,7 @@ fn await_first_contact(token: &str, code: &str, secs: u64) -> Result<(i64, Strin
 fn send_greeting(token: &str, chat_id: i64) {
     let api = tg_api(token);
     let text = "I'm here. 🌱\n\nI'm your companion — I'll remember what matters to your family, help you show up for the people you love, and I can always prove what I know and how sure I am.\n\nWaking up fully now — say hello and we'll get to know each other.";
-    let _ = ureq::post(&format!("{api}/sendMessage"))
+    let _ = mind_net::post(&format!("{api}/sendMessage"))
         .timeout(std::time::Duration::from_secs(12))
         .send_json(serde_json::json!({ "chat_id": chat_id, "text": text }));
 }

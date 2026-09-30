@@ -420,7 +420,7 @@ fn alpaca_get(url: String) -> anyhow::Result<serde_json::Value> {
         std::env::var("ALPACA_KEY_ID").map_err(|_| anyhow::anyhow!("ALPACA_KEY_ID is not set"))?;
     let sec = std::env::var("ALPACA_SECRET_KEY")
         .map_err(|_| anyhow::anyhow!("ALPACA_SECRET_KEY is not set"))?;
-    Ok(ureq::get(&url)
+    Ok(mind_net::get(&url)
         .set("APCA-API-KEY-ID", &key)
         .set("APCA-API-SECRET-KEY", &sec)
         .timeout(std::time::Duration::from_secs(30))

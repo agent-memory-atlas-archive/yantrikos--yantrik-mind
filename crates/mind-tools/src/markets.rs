@@ -75,7 +75,7 @@ impl MarketsClient for LiveMarkets {
         }
         tokio::task::spawn_blocking(move || -> anyhow::Result<Quote> {
             // search → the top (highest market-cap) coin's id/name/symbol
-            let s: serde_json::Value = ureq::get("https://api.coingecko.com/api/v3/search")
+            let s: serde_json::Value = mind_net::get("https://api.coingecko.com/api/v3/search")
                 .timeout(std::time::Duration::from_secs(15))
                 .query("query", &q)
                 .call()?
@@ -88,7 +88,7 @@ impl MarketsClient for LiveMarkets {
             let name = coin["name"].as_str().unwrap_or(&q).to_string();
             let sym = coin["symbol"].as_str().unwrap_or("").to_uppercase();
             // price + 24h change
-            let p: serde_json::Value = ureq::get("https://api.coingecko.com/api/v3/simple/price")
+            let p: serde_json::Value = mind_net::get("https://api.coingecko.com/api/v3/simple/price")
                 .timeout(std::time::Duration::from_secs(15))
                 .query("ids", &id)
                 .query("vs_currencies", "usd")
@@ -119,7 +119,7 @@ impl MarketsClient for LiveMarkets {
         tokio::task::spawn_blocking(move || -> anyhow::Result<Quote> {
             // Yahoo Finance chart endpoint (no key) — needs a browser UA or it 401/429s.
             let url = format!("https://query1.finance.yahoo.com/v8/finance/chart/{sym}");
-            let v: serde_json::Value = ureq::get(&url)
+            let v: serde_json::Value = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(15))
                 .set("User-Agent", "Mozilla/5.0 (compatible; yantrik-mind/1.0)")
                 .query("interval", "1d")

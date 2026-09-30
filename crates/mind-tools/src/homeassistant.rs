@@ -254,7 +254,7 @@ impl HomeWriter for ApiHomeAssistantClient {
         );
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
             let url = format!("{base}/api/services/{d}/{s}");
-            ureq::post(&url)
+            mind_net::post(&url)
                 .timeout(std::time::Duration::from_secs(15))
                 .set("Authorization", &format!("Bearer {token}"))
                 .set("Content-Type", "application/json")
@@ -291,7 +291,7 @@ impl HomeAssistantClient for ApiHomeAssistantClient {
         );
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<HaEntity>> {
             let url = format!("{base}/api/states");
-            let resp = ureq::get(&url)
+            let resp = mind_net::get(&url)
                 .timeout(std::time::Duration::from_secs(15))
                 .set("Authorization", &format!("Bearer {token}"))
                 .set("Content-Type", "application/json")

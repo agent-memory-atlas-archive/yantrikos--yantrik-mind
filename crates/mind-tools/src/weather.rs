@@ -74,7 +74,7 @@ impl WeatherClient for OpenMeteo {
         tokio::task::spawn_blocking(move || -> anyhow::Result<String> {
             // 1) geocode the place name → lat/lon (+ canonical name/country)
             let geocode = |name: &str| -> anyhow::Result<serde_json::Value> {
-                Ok(ureq::get("https://geocoding-api.open-meteo.com/v1/search")
+                Ok(mind_net::get("https://geocoding-api.open-meteo.com/v1/search")
                     .timeout(std::time::Duration::from_secs(15))
                     .query("name", name)
                     .query("count", "1")
@@ -92,7 +92,7 @@ impl WeatherClient for OpenMeteo {
             let name = r["name"].as_str().unwrap_or(&place).to_string();
             let country = r["country"].as_str().unwrap_or("").to_string();
             // 2) current conditions + today's hi/lo (NWS day-1 when open-meteo is down)
-            let w: serde_json::Value = match ureq::get("https://api.open-meteo.com/v1/forecast")
+            let w: serde_json::Value = match mind_net::get("https://api.open-meteo.com/v1/forecast")
                 .timeout(std::time::Duration::from_secs(15))
                 .query("latitude", &lat.to_string())
                 .query("longitude", &lon.to_string())
@@ -140,7 +140,7 @@ impl WeatherClient for OpenMeteo {
         let days = days.clamp(1, 16);
         tokio::task::spawn_blocking(move || -> anyhow::Result<Vec<DayForecast>> {
             let geocode = |name: &str| -> anyhow::Result<serde_json::Value> {
-                Ok(ureq::get("https://geocoding-api.open-meteo.com/v1/search")
+                Ok(mind_net::get("https://geocoding-api.open-meteo.com/v1/search")
                     .timeout(std::time::Duration::from_secs(15))
                     .query("name", name)
                     .query("count", "1")
@@ -156,7 +156,7 @@ impl WeatherClient for OpenMeteo {
             }
             let r = geo["results"].get(0).cloned().ok_or_else(|| anyhow::anyhow!("couldn't find a place called \"{place}\""))?;
             let (lat, lon) = (r["latitude"].as_f64().unwrap_or(0.0), r["longitude"].as_f64().unwrap_or(0.0));
-            let w: serde_json::Value = match ureq::get("https://api.open-meteo.com/v1/forecast")
+            let w: serde_json::Value = match mind_net::get("https://api.open-meteo.com/v1/forecast")
                 .timeout(std::time::Duration::from_secs(15))
                 .query("latitude", &lat.to_string())
                 .query("longitude", &lon.to_string())
@@ -207,7 +207,7 @@ impl WeatherClient for OpenMeteo {
 fn nws_daily(lat: f64, lon: f64) -> anyhow::Result<Vec<DayForecast>> {
     const UA: &str = "yantrik-mind (contact: developer@pranab.co.in)";
     let pts: serde_json::Value =
-        ureq::get(&format!("https://api.weather.gov/points/{lat:.4},{lon:.4}"))
+        mind_net::get(&format!("https://api.weather.gov/points/{lat:.4},{lon:.4}"))
             .set("User-Agent", UA)
             .timeout(std::time::Duration::from_secs(15))
             .call()?
@@ -216,7 +216,7 @@ fn nws_daily(lat: f64, lon: f64) -> anyhow::Result<Vec<DayForecast>> {
         .as_str()
         .ok_or_else(|| anyhow::anyhow!("NWS: no forecast URL (non-US location?)"))?
         .to_string();
-    let fc: serde_json::Value = ureq::get(&url)
+    let fc: serde_json::Value = mind_net::get(&url)
         .set("User-Agent", UA)
         .timeout(std::time::Duration::from_secs(15))
         .call()?

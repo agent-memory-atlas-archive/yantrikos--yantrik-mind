@@ -231,7 +231,7 @@ impl PaperBroker {
     }
 
     fn get(&self, path: &str) -> anyhow::Result<serde_json::Value> {
-        Ok(ureq::get(&format!("{PAPER_HOST}{path}"))
+        Ok(mind_net::get(&format!("{PAPER_HOST}{path}"))
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(30))
@@ -313,7 +313,7 @@ impl PaperBroker {
             "type": "market",
             "time_in_force": "day",
         });
-        let v: serde_json::Value = ureq::post(&format!("{PAPER_HOST}/orders"))
+        let v: serde_json::Value = mind_net::post(&format!("{PAPER_HOST}/orders"))
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(30))
@@ -388,7 +388,7 @@ impl PaperBroker {
     }
 
     fn submit_order(&self, body: serde_json::Value) -> anyhow::Result<OrderAck> {
-        let v: serde_json::Value = ureq::post(&format!("{PAPER_HOST}/orders"))
+        let v: serde_json::Value = mind_net::post(&format!("{PAPER_HOST}/orders"))
             .set("APCA-API-KEY-ID", &self.key)
             .set("APCA-API-SECRET-KEY", &self.secret)
             .timeout(std::time::Duration::from_secs(30))

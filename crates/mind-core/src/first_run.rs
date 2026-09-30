@@ -412,10 +412,8 @@ pub struct HttpOllama;
 
 impl Ollama for HttpOllama {
     fn models(&self, url: &str) -> Result<Vec<String>, String> {
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(4))
-            .timeout(Duration::from_secs(10))
-            .build();
+        // E.EGRESS1: a same-box Ollama goes direct, a remote one through the egress proxy.
+        let agent = mind_net::route(mind_net::builder().timeout_connect(Duration::from_secs(4)).timeout(Duration::from_secs(10)), url);
         let reply: serde_json::Value = agent
             .get(&format!("{url}/api/tags"))
             .call()
@@ -438,10 +436,7 @@ impl Ollama for HttpOllama {
     }
 
     fn answers(&self, url: &str, model: &str) -> Result<(), String> {
-        let agent = ureq::AgentBuilder::new()
-            .timeout_connect(Duration::from_secs(4))
-            .timeout(ANSWER_TIMEOUT)
-            .build();
+        let agent = mind_net::route(mind_net::builder().timeout_connect(Duration::from_secs(4)).timeout(ANSWER_TIMEOUT), url);
         // `think: false` because that is how this mind will call it, and a thinking preamble would
         // turn a one-word check into a minute of reasoning.
         let reply: serde_json::Value = agent

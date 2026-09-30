@@ -95,7 +95,7 @@ impl GPhotosClient {
     pub async fn begin_auth(&self) -> anyhow::Result<DeviceCode> {
         let client_id = self.client_id.clone();
         tokio::task::spawn_blocking(move || -> anyhow::Result<DeviceCode> {
-            let resp = ureq::post(DEVICE)
+            let resp = mind_net::post(DEVICE)
                 .timeout(std::time::Duration::from_secs(20))
                 .send_form(&[("client_id", &client_id), ("scope", SCOPE)]);
             let j: serde_json::Value = match resp {
@@ -148,7 +148,7 @@ impl GPhotosClient {
                     return Ok(false);
                 }
                 std::thread::sleep(std::time::Duration::from_secs(interval.max(5)));
-                let resp = ureq::post(TOKEN)
+                let resp = mind_net::post(TOKEN)
                     .timeout(std::time::Duration::from_secs(20))
                     .send_form(&[
                         ("client_id", &client_id),
@@ -196,7 +196,7 @@ impl GPhotosClient {
     fn access(&self, now_secs: i64) -> anyhow::Result<String> {
         let mut tok: GpToken = serde_json::from_str(&std::fs::read_to_string(&self.token_path)?)?;
         if tok.access_token.is_empty() || now_secs >= tok.expires_at - 120 {
-            let j: serde_json::Value = ureq::post(TOKEN)
+            let j: serde_json::Value = mind_net::post(TOKEN)
                 .timeout(std::time::Duration::from_secs(20))
                 .send_form(&[
                     ("client_id", &self.client_id),
@@ -220,7 +220,7 @@ impl GPhotosClient {
         let this = self.dupe();
         tokio::task::spawn_blocking(move || -> anyhow::Result<PickSession> {
             let token = this.access(now_secs)?;
-            let j: serde_json::Value = ureq::post(&format!("{PICKER}/sessions"))
+            let j: serde_json::Value = mind_net::post(&format!("{PICKER}/sessions"))
                 .set("Authorization", &format!("Bearer {token}"))
                 .set("Content-Type", "application/json")
                 .timeout(std::time::Duration::from_secs(30))
@@ -255,7 +255,7 @@ impl GPhotosClient {
                 }
                 std::thread::sleep(std::time::Duration::from_secs(poll_interval.max(3)));
                 let token = this.access(now_secs)?;
-                let j: serde_json::Value = match ureq::get(&format!("{PICKER}/sessions/{sid}"))
+                let j: serde_json::Value = match mind_net::get(&format!("{PICKER}/sessions/{sid}"))
                     .set("Authorization", &format!("Bearer {token}"))
                     .timeout(std::time::Duration::from_secs(20))
                     .call()
@@ -288,7 +288,7 @@ impl GPhotosClient {
                 if !page.is_empty() {
                     url.push_str(&format!("&pageToken={page}"));
                 }
-                let j: serde_json::Value = ureq::get(&url)
+                let j: serde_json::Value = mind_net::get(&url)
                     .set("Authorization", &format!("Bearer {token}"))
                     .timeout(std::time::Duration::from_secs(30))
                     .call()?
@@ -326,7 +326,7 @@ impl GPhotosClient {
             let token = this.access(now_secs).ok()?;
             // Picker/Photos baseUrl download parameter: `=d` = full bytes (image download).
             let url = format!("{base_url}=d");
-            let resp = ureq::get(&url)
+            let resp = mind_net::get(&url)
                 .set("Authorization", &format!("Bearer {token}"))
                 .timeout(std::time::Duration::from_secs(60))
                 .call()

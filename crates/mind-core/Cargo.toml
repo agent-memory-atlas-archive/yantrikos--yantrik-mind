@@ -4,6 +4,8 @@ version.workspace = true
 edition.workspace = true
 
 [dependencies]
+# E.EGRESS1: every HTTP request routes through the machine's egress proxy (loopback direct).
+mind-net = { workspace = true }
 mind-types = { workspace = true }
 mind-memory = { workspace = true }
 # Serves this mind's memory over MCP when it owns the Yantrik OS memory file (YM_MEMORY_SERVER).
