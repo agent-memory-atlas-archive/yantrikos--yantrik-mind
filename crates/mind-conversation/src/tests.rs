@@ -16802,6 +16802,23 @@ mod desktop_consent_and_stall_wiring {
         .await;
         assert_eq!(count(&r, "web_scroll"), 2, "the second scroll was refused as a repeat");
         assert_eq!(count(&r, "web_read"), 2, "the read after the second scroll was stale");
+        // E.ARENA1-F42 (520, 4128222): back to a page after going elsewhere is a new navigation...
+        let go = |u: &str| Step::Call("mcp.yantrik-os.web_go", serde_json::json!({"url": u}));
+        let r = run_web(
+            "Open the front page, then the story, then the front page again",
+            vec![go("https://news.ycombinator.com"), go("https://news.ycombinator.com/item?id=1"), go("https://news.ycombinator.com")],
+            vec![("web_go", vec!["Went to Hacker News", "Went to the story", "Went to Hacker News"])],
+        )
+        .await;
+        assert_eq!(count(&r, "web_go"), 3, "going back to a page after the browser moved was refused as a repeat");
+        // ...while the same navigation twice in a row is still a repeat.
+        let r = run_web(
+            "Open the front page",
+            vec![go("https://news.ycombinator.com"), go("https://news.ycombinator.com")],
+            vec![("web_go", vec!["Went to Hacker News", "Went to Hacker News"])],
+        )
+        .await;
+        assert_eq!(count(&r, "web_go"), 1, "an immediate identical navigation was sent twice");
     }
 
     fn act(app: &str, action: &str, text: &str) -> serde_json::Value {

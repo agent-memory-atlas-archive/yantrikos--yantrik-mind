@@ -309,6 +309,13 @@ const REPEATABLE_WEB: [&str; 4] = [
     "mcp.yantrik-os.web_back",
 ];
 
+/// E.ARENA1-F42: after a web change, forget every earlier web call -- a URL or an element ref means
+/// something new on the next page (520, 4128222: "go back to the front page" was refused as a repeat
+/// after the browser had moved to a story). The immediate identical repeat is still the loop's to nudge.
+pub(crate) fn forget_web_calls(done: &mut std::collections::HashSet<String>) {
+    done.retain(|sig| !sig.starts_with(WEB_PREFIX));
+}
+
 /// E.ARENA1-F41: may this call run again later in the turn, however often it already ran?
 pub(crate) fn repeatable(tool: &str) -> bool {
     REPEATABLE_WEB.contains(&tool)

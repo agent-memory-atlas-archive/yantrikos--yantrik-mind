@@ -13732,6 +13732,10 @@ The answer travels inside a JSON string, so newlines and quotes must be         
             // E.ARENA1-F39: a read that arrives as an act changes nothing.
             if desktop::changes_the_desktop(&tool) && !desktop::is_read_act(&tool, &args) {
                 desktop::forget_desktop_reads(&mut done_calls);
+                // E.ARENA1-F42: a web change moves the page -- earlier web calls are not repeats.
+                if tool.starts_with("mcp.yantrik-os.web_") {
+                    desktop::forget_web_calls(&mut done_calls);
+                }
             }
             last_call = call_sig.clone();
             // E.ARENA1-F41: a scroll, wait, key press or back is meant to be repeated -- "scroll,

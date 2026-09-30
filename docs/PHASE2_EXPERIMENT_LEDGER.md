@@ -11038,3 +11038,21 @@ The memory server's door client (E.DOOR1) never caches a refusal, but a yes cach
   - `private_mode_is_asked_about_once_a_minute`: PRIVATE → 60 s, EACCES → 60 s, "connection refused" → 5 s.
   - The door test: a yes cached before Private mode isn't served after a failed validation, and it's asked about again.
   - Mutants M2 (retry every 5 s) and M3 (forget only the asked credential) were each watched to fail.
+
+## E.WEBGATE1 LIVE on 520 + E.ARENA1-F42 PREREG: a web call after the page moved is not a repeat
+
+**Live** (4128222, sha256 8042a0292a637704, 22:10 UTC): "In the browser on my desktop, open news.ycombinator.com, click the top story's comments link, and tell me how many comments the page shows."
+- `web_go` news.ycombinator.com reached the real browser (`app-browser`, yantrik-os #480) with **no chat "yes"**; the desktop's gate decided, per Pranab.
+- `web_go` to the story's item page.
+- A reply in 9.0 s: 132 comments, with an honest caveat about where that count was read.
+- The desktop counted 2 new call cards, 0 failed.
+
+**The defect seen in the same turn:** at step 2 the model went back to the front page, and the loop refused its `web_go` as "already called with these args — reusing the work log". The browser had navigated in between. A URL, or an element ref like `e12`, means something new on every page, so after any web change an earlier identical web call isn't a repeat. F36 solved this for `os_act` with revisions; web replies carry none.
+
+**F42:** after any web change, every earlier `web_*` call is forgotten by the repeat guard. The immediate identical repeat (the last-call check) is still nudged.
+
+**Kill criteria**, through the loop:
+- go A, go B, go A sends 3.
+- go A, go A sends 1.
+
+**E.ARENA1-F42 — RESULT: built, and both kill criteria held** (in the extended `the_browser_is_read_again_after_it_changes`): go A, go B, go A sends 3; go A, go A sends 1. Mutant M1 (web calls stay repeats) was watched to fail. Full suite: 2156 passed, 0 failed (the test was extended, not added). It rides the next Mind restart on 520.
