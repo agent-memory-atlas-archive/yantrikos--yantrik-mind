@@ -61,12 +61,25 @@ pub use safety::{
 ///
 /// The operator's name is a parameter (from config), never hardcoded — defaults to "the user".
 pub fn default_persona(operator: &str) -> String {
+    persona(LEGACY_MIND_NAME, operator)
+}
+
+/// The name a Mind answers to when it was given none: what existing installs have always been
+/// called, so they keep it. A Mind on Yantrik OS is given its name by its unit (E.NAME1).
+pub const LEGACY_MIND_NAME: &str = "JARVIS";
+
+/// The persona for a Mind called `name`, the companion of `operator`.
+pub fn persona(name: &str, operator: &str) -> String {
     let op = match operator.trim() {
         "" => "the user",
         o => o,
     };
+    let name = match name.trim() {
+        "" => LEGACY_MIND_NAME,
+        n => n,
+    };
     format!(
-        "You are JARVIS — an AI companion and extension of {op}.\n\
+        "You are {name} — an AI companion and extension of {op}.\n\
 WHAT YOU ARE (true — describe yourself accurately if asked; never claim to be a stateless chatbot):\n\
 - You are NOT idle between messages and you are NOT memoryless. You run on YantrikDB, a typed-memory \
 substrate: you remember across conversations as typed beliefs with confidence + evidence, not flat text.\n\
@@ -96,4 +109,59 @@ HOW YOU COMMUNICATE (this is most of what makes you good):\n\
 this turn and confirmed success. Writing a note or belief is NOT doing the thing. If you have no \
 tool for what they asked, say plainly: I can't do that yet — then offer the nearest thing you CAN do."
     )
+}
+
+#[cfg(test)]
+mod persona_tests {
+    use super::{default_persona, persona};
+
+    /// E.NAME1: a Mind given a name says that name and its person's, not the legacy one.
+    #[test]
+    fn the_persona_says_the_name_it_was_given() {
+        let p = persona("Yantrik Mind", "Asha");
+        assert!(p.starts_with("You are Yantrik Mind — an AI companion and extension of Asha."), "{}", &p[..80]);
+        assert!(!p.contains("JARVIS"), "the legacy name leaked into a named persona");
+        assert!(default_persona("Asha").starts_with("You are JARVIS — "), "existing installs keep their name");
+        assert!(persona("  ", "").starts_with("You are JARVIS — an AI companion and extension of the user."));
+    }
+
+    /// E.NAME1: no prompt outside tests names the Mind "JARVIS" itself -- the name comes from
+    /// `persona`. Test modules (a `#[cfg(test)]` that opens a `mod`) and tests.rs files are skipped.
+    #[test]
+    fn no_prompt_hard_codes_the_legacy_name() {
+        let crates = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).parent().unwrap().to_path_buf();
+        let mut found = Vec::new();
+        let mut stack = vec![crates.clone()];
+        while let Some(dir) = stack.pop() {
+            for e in std::fs::read_dir(&dir).unwrap().flatten() {
+                let p = e.path();
+                if p.is_dir() {
+                    let name = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                    if !matches!(name, "target" | "fixtures" | "tests") {
+                        stack.push(p);
+                    }
+                    continue;
+                }
+                let fname = p.file_name().and_then(|n| n.to_str()).unwrap_or("");
+                if p.extension().and_then(|x| x.to_str()) != Some("rs") || fname == "tests.rs" || fname.ends_with("_tests.rs") {
+                    continue;
+                }
+                let text = std::fs::read_to_string(&p).unwrap();
+                let lines: Vec<&str> = text.lines().collect();
+                for (i, line) in lines.iter().enumerate() {
+                    let opens_mod = lines.get(i + 1).is_some_and(|n| {
+                        let n = n.trim_start();
+                        n.starts_with("mod ") || n.starts_with("pub mod ") || n.starts_with("pub(crate) mod ")
+                    });
+                    if line.trim_start().starts_with("#[cfg(test)]") && opens_mod {
+                        break;
+                    }
+                    if line.contains("You are JARVIS") || line.contains("JARVIS's") {
+                        found.push(format!("{}:{}", p.strip_prefix(&crates).unwrap().display(), i + 1));
+                    }
+                }
+            }
+        }
+        assert!(found.is_empty(), "a prompt names the Mind JARVIS outright: {found:?}");
+    }
 }

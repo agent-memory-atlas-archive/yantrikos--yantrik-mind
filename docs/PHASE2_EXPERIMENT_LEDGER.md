@@ -11375,3 +11375,24 @@ With today's yantrik-ml ("none"), behaviour is unchanged.
 3. No non-test prompt says "You are JARVIS".
 4. Each is watched to fail under a mutant.
 5. Live: on 561 with `YM_MIND_NAME` set, "who are you" answers with the given name.
+
+**E.NAME1 — RESULT: built, and every kill criterion held except the live check.** Suite 2175/0.
+- **The shape:**
+  - `mind_types::persona(name, operator)`; `default_persona` = `persona(LEGACY_MIND_NAME, …)`.
+  - `mind_core::mind_name_from(env, chosen_at_setup)`: `YM_MIND_NAME`, then `mind.name` from the trust folder, then "JARVIS". A name is its first line, trimmed, at most 40 characters.
+  - `engine()` takes its persona from `engine_persona`.
+  - The recipe planner says "You are a task planner."
+- **Tests:**
+  - `the_name_is_the_units_then_the_chosen_one_then_the_legacy_one`.
+  - `a_name_is_one_short_line`: a second line in the value is dropped, and 60 characters become 40.
+  - `the_engine_runs_as_the_mind_it_was_named`: the persona starts "You are Yantrik Mind — an AI companion and extension of Yantrik Live."; a source check fails if `engine()` stops calling `engine_persona` or falls back to `default_persona`.
+  - `the_persona_says_the_name_it_was_given`.
+  - `no_prompt_hard_codes_the_legacy_name`: a scan of non-test code for "You are JARVIS" and "JARVIS's".
+- **Mutants, each watched to fail its test:**
+  - M1: the persona ignores its name.
+  - M2: the planner says JARVIS again.
+  - M3: the setup name beats the unit's.
+  - M4: the name is not cut to one line.
+  - M5: `engine()` goes back to the legacy persona.
+  - M6: no 40-character cap.
+- **OS side, yantrik-os #526 (07):** `yantrik-mind-launch` fills in `YM_MIND_NAME=Yantrik Mind` and `YM_OPERATOR` (the machine's one person's GECOS name), only where the Mind's own settings leave them out. It is running on 561. Turn 2 there already said "extension of Yantrik Live", so the operator half is live; the name waits on this build.

@@ -1178,7 +1178,7 @@ GOAL: GOAL_HERE"#;
             .replace("GOAL_HERE", goal);
         let messages = vec![
             ChatMessage::system(
-                "You are JARVIS's task planner. Output ONLY a JSON array of RecipeStep.",
+                "You are a task planner. Output ONLY a JSON array of RecipeStep.",
             ),
             ChatMessage::user(&prompt),
         ];
