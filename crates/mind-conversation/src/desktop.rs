@@ -994,6 +994,13 @@ pub(crate) fn same_change_again(
 /// runs with an agent token, and E.TOKEN1 gives it one. The token says who acts; it must not change
 /// what the model reaches for -- on 557e4ef the model wrote files with `run_command`, the Mind's
 /// own gate asked "confirm with yes", and T6/T7 ended there. Other servers are unaffected.
+/// E.WEBGATE1 (Pranab, 2026-09-29): the desktop's own browser tools, whose gate is the desktop's --
+/// browsing runs, a commitment raises its card every time, and its taint still blocks typing out
+/// private data. The Mind does not ask for these on top; every other MCP tool keeps its own ask.
+pub(crate) fn the_desktop_gates(t: &mind_tools::McpTool) -> bool {
+    t.server == DESKTOP_SERVER && t.name.starts_with("web_")
+}
+
 pub(crate) fn offered_to_the_model(t: &mind_tools::McpTool) -> bool {
     t.server != DESKTOP_SERVER || t.name.starts_with("os_") || t.name.starts_with("web_")
 }
@@ -1808,6 +1815,24 @@ mod tests {
         assert!(repeatable("mcp.yantrik-os.web_scroll") && !repeatable("mcp.yantrik-os.web_click"));
         assert_eq!(fold_app("Chromium"), "browser");
         assert_eq!(fold_app("app-browser"), "browser");
+    }
+
+    /// E.WEBGATE1: exactly the desktop server's web_* tools -- no other server, no other prefix.
+    #[test]
+    fn only_the_desktops_browser_tools_are_gated_by_the_desktop() {
+        let t = |server: &str, name: &str| mind_tools::McpTool {
+            server: server.into(),
+            name: name.into(),
+            description: String::new(),
+            read_only: false,
+            open_world: true,
+            destructive: false,
+            input_schema: serde_json::json!({}),
+        };
+        assert!(the_desktop_gates(&t("yantrik-os", "web_go")) && the_desktop_gates(&t("yantrik-os", "web_commit")));
+        assert!(!the_desktop_gates(&t("somewhere-else", "web_go")), "another server's web_ tool");
+        assert!(!the_desktop_gates(&t("yantrik-os", "os_act")), "a desktop tool that is not the browser");
+        assert!(!the_desktop_gates(&t("yantrik-os", "webhook_send")), "a lookalike prefix");
     }
 
     #[test]

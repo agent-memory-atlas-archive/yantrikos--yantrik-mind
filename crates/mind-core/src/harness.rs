@@ -77,8 +77,37 @@ const HEARTBEAT: Duration = Duration::from_secs(30);
 ///
 /// Hit in two ordinary situations: this mind started before the shell did, and the shell
 /// restarted. Neither is an error and neither needs a person, so both are simply retried.
-#[cfg(unix)]
+#[cfg_attr(not(unix), allow(dead_code))]
 const RETRY: Duration = Duration::from_secs(5);
+
+/// E.PRIV1 (yantrik-os #492/#498): while the person is in Private mode the door refuses everything
+/// ("PRIVATE: …") and its sockets refuse new connects (EACCES). Ask again about once a minute, not
+/// every five seconds.
+#[cfg_attr(not(unix), allow(dead_code))]
+const PRIVATE_RETRY: Duration = Duration::from_secs(60);
+
+/// E.PRIV1: how long to wait before trying the desktop again, after `why` it failed.
+#[cfg_attr(not(unix), allow(dead_code))]
+fn retry_after(why: &str) -> Duration {
+    if why.contains("PRIVATE:") || why.contains("Permission denied") || why.contains("os error 13") {
+        PRIVATE_RETRY
+    } else {
+        RETRY
+    }
+}
+
+#[cfg(test)]
+mod private_tests {
+    /// E.PRIV1: Private mode (refused, or the door closed to new connects) waits a minute; the
+    /// desktop merely being down still retries quickly.
+    #[test]
+    fn private_mode_is_asked_about_once_a_minute() {
+        use std::time::Duration;
+        assert_eq!(super::retry_after("PRIVATE: the person has turned on Private mode. Nothing was run."), Duration::from_secs(60));
+        assert_eq!(super::retry_after("connect /run/yantrik-minds/harness.sock: Permission denied (os error 13)"), Duration::from_secs(60));
+        assert_eq!(super::retry_after("connect /run/yantrik-minds/harness.sock: Connection refused (os error 111)"), Duration::from_secs(5));
+    }
+}
 
 /// What the picker shows under the name: which backend is behind this mind, and which memory.
 ///
@@ -416,7 +445,7 @@ async fn run(mem: MemoryHandle, conv: Arc<ConversationEngine>, detail: String) {
             Ok(reply) => reply["session"].as_str().unwrap_or_default().to_string(),
             Err(e) => {
                 say(format!("could not attach at {address}: {e}"));
-                tokio::time::sleep(RETRY).await;
+                tokio::time::sleep(retry_after(&e)).await;
                 continue;
             }
         };
@@ -425,9 +454,9 @@ async fn run(mem: MemoryHandle, conv: Arc<ConversationEngine>, detail: String) {
         ));
 
         // ── Answer, until the desktop goes away ──
-        serve(&mem, &conv, &address, &session, timeout).await;
+        let why = serve(&mem, &conv, &address, &session, timeout).await;
         say("lost the desktop; re-attaching".to_string());
-        tokio::time::sleep(RETRY).await;
+        tokio::time::sleep(retry_after(&why)).await;
     }
 }
 
@@ -439,7 +468,7 @@ async fn serve(
     address: &str,
     session: &str,
     timeout: Duration,
-) {
+) -> String {
     // One setup conversation per session: attaching again starts it over, which is what a person
     // would expect after the desktop restarted.
     let first_run = NEEDS_SETUP.load(std::sync::atomic::Ordering::Relaxed).then(|| {
@@ -465,7 +494,8 @@ async fn serve(
             // attaching IS the reconnect.
             Err(e) => {
                 eprintln!("[harness] poll failed: {e}");
-                return;
+                // E.PRIV1: the caller waits according to why.
+                return e;
             }
         };
 

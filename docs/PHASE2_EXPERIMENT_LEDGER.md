@@ -10997,3 +10997,44 @@ yantrik-os #480 (merged, reaching 520 with the next build) makes the browser an 
 - Mutants, each watched to fail: M1 (web changes don't make reads stale) and M2 (scrolls remembered).
 - **Known limit, passed to f4:** an *immediate* identical repeat, such as "Down" then "Down", is still nudged. I suggested a `count` argument on `web_press` / `web_scroll`.
 - It rides 520's restart for yantrik-os #480.
+
+## E.WEBGATE1 — PREREG: for the desktop's browser, the desktop decides (Pranab, 2026-09-29)
+
+**Seen live on 520** (F41, with yantrik-os #480): "In the browser on my desktop, open news.ycombinator.com…" — the Mind's `web_go` never reached the browser. The Mind's own action runtime answered "Ready to run web_go via the yantrik-os integration — confirm with 'yes'".
+- #480 made the web tools' `readOnlyHint` truthful, as asked.
+- The Mind's governance asks for confirmation of every outward (open-world) MCP action, even when reversible and low-risk. That's deliberate: its test says changing it "needs a person's decision, not a refactor".
+- The desktop already grades these itself: browsing is standard (no card), `web_commit` asks every time, and taint blocks typing out private data.
+- So the browser path was double-gated, and a chat "yes" per navigation made it unusable unattended.
+
+**Pranab's decision** (relayed by yantrik-os-f4, then his own "check first" answer): *for yantrik-os web_* only, the Mind lets the desktop decide. Browsing runs, commitments raise the desktop's card every time, and the taint still blocks typing out private data. Other MCP servers keep the Mind's chat confirmation.*
+
+**E.WEBGATE1:** where the Mind's runtime would ask for confirmation of an MCP call, a tool on server `yantrik-os` whose name starts with `web_` runs instead, with the desktop's gate the one that asks. A **Deny** from the harm gate still denies, and every other open-world MCP tool still asks. The governance crate's outward-asks test is unchanged.
+
+**Kill criteria**, through a real governed runtime and a scripted desktop:
+- `web_go` runs and reaches the desktop.
+- An open-world tool on another server still returns "confirm with 'yes'" and doesn't run.
+- The scope is exactly server `yantrik-os` and the `web_` prefix.
+
+## E.PRIV1 — PREREG: Private mode quiets the Mind
+
+yantrik-os #492/#498 (on 520 since 2026-09-29): while the person is in Private mode, every mind-door request answers `-32602 "PRIVATE: …"`, and the door sockets go to 0600, so a new connect from the mind account gets EACCES. The OS asked minds to back off (poll about once a minute), keep the journal quiet, and not count the refusals as failures. On 520 the Mind's harness already logs each distinct message only once: the 13:00–14:51 private window left three journal lines. **But it retried the desktop every 5 s throughout.**
+
+The memory server's door client (E.DOOR1) never caches a refusal, but a yes cached **before** Private mode began could still be served for its `valid_for_ms` (2 s, capped at 5 s).
+
+**E.PRIV1:**
+- A PRIVATE refusal, or a permission-denied connect, makes the harness wait 60 s before the next attach, instead of 5 s. Any other failure keeps 5 s.
+- Any failed validation at the door drops **every** cached credential, not just the one asked about.
+
+**Kill criteria:**
+- PRIVATE → 60 s; EACCES → 60 s; "connection refused" → 5 s.
+- After a failed validation, a previously cached live credential is asked about again.
+
+**E.WEBGATE1 and E.PRIV1 — RESULT: built, and every kill criterion held.** Full suite: 2156 passed, 0 failed. On Linux (staging): mind-core 125/125.
+- **E.WEBGATE1:**
+  - `the_desktop_decides_for_its_own_browser_tools` (a real GovernedActionRuntime and a scripted hub): `web_go` ran and reached the desktop with no "confirm with"; another server's open-world tool still asked, and didn't run.
+  - `only_the_desktops_browser_tools_are_gated_by_the_desktop`: the scope is exactly `yantrik-os` + `web_`.
+  - Mutant M1 (the Mind asks on top) was watched to fail.
+- **E.PRIV1:**
+  - `private_mode_is_asked_about_once_a_minute`: PRIVATE → 60 s, EACCES → 60 s, "connection refused" → 5 s.
+  - The door test: a yes cached before Private mode isn't served after a failed validation, and it's asked about again.
+  - Mutants M2 (retry every 5 s) and M3 (forget only the asked credential) were each watched to fail.

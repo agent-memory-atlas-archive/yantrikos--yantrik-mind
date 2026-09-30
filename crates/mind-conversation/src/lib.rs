@@ -12378,7 +12378,13 @@ WINDOW: all-time, latest 200
                             };
                             let req = self.new_request(intent);
                             let ctx = Self::dummy_ctx(&req, "");
-                            match runtime.decide(&req, &ctx).await {
+                            // E.WEBGATE1 (Pranab, 2026-09-29): for the desktop's own browser tools the
+                            // desktop's gate decides -- the Mind does not ask on top. A Deny stands.
+                            let decision = match runtime.decide(&req, &ctx).await {
+                                ActionDecision::RequireConfirmation { .. } if desktop::the_desktop_gates(&t) => ActionDecision::Execute,
+                                d => d,
+                            };
+                            match decision {
                                 ActionDecision::Deny { reason } => format!("(I can't run {name} — {reason}.)"),
                                 ActionDecision::Execute => match runtime.execute(req).await {
                                     Ok(r) if r.ok => format!("Done — {}", r.output),

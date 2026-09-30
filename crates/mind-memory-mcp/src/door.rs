@@ -108,7 +108,11 @@ impl Validator {
             }
             Err(e) => {
                 eprintln!("[memory] a credential could not be validated ({e}) -- refused");
-                self.forget(&sha);
+                // E.PRIV1: the door failing (Private mode, closed, timed out) means nothing it said
+                // before can be leaned on either -- every cached yes goes, not just this one.
+                if let Ok(mut c) = self.cache.lock() {
+                    c.clear();
+                }
                 return None;
             }
         };
@@ -232,6 +236,23 @@ mod tests {
         let (v, asked) = counting(Err("timed out".into()));
         assert!(v.footing("mem-z").is_none() && v.footing("mem-z").is_none());
         assert_eq!(asked.load(Ordering::SeqCst), 2, "a failure was cached");
+
+        // E.PRIV1: a failed validation drops every cached yes, not only the one asked about.
+        let flip = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let asked = Arc::new(AtomicUsize::new(0));
+        let (f, a) = (flip.clone(), asked.clone());
+        let v = Validator::with_asker(
+            Box::new(move |_| {
+                a.fetch_add(1, Ordering::SeqCst);
+                if f.load(Ordering::SeqCst) { Err("PRIVATE: the person has turned on Private mode".into()) } else { Ok(Some(live(1000, 2000))) }
+            }),
+            1000,
+        );
+        assert!(v.footing("mem-a").is_some());
+        flip.store(true, Ordering::SeqCst);
+        assert!(v.footing("mem-b").is_none(), "Private mode answered yes");
+        assert!(v.footing("mem-a").is_none(), "a yes cached before Private mode was still served");
+        assert_eq!(asked.load(Ordering::SeqCst), 3, "the cached credential was not asked about again");
 
         let (v, _) = counting(Ok(Some(live(1001, 2000))));
         assert!(v.footing("mem-w").is_none(), "another person's credential gave a footing");

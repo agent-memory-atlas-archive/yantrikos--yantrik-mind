@@ -428,6 +428,40 @@ fn epistemic_gate_only_observed_or_told_may_act() {
     assert!(!ConversationEngine::belief_actionable("")); // unknown provenance never acts unprompted
 }
 
+/// E.WEBGATE1 (Pranab, 2026-09-29), through a real governed runtime: the desktop's browser tool runs
+/// without the Mind's "yes" and reaches the desktop; another server's outward tool still asks.
+#[tokio::test(flavor = "multi_thread", worker_threads = 2)]
+async fn the_desktop_decides_for_its_own_browser_tools() {
+    let hub = Arc::new(mind_tools::McpHub::new());
+    let tool = |server: &str, name: &str| mind_tools::McpTool {
+        server: server.into(),
+        name: name.into(),
+        description: format!("{name}"),
+        read_only: false,
+        open_world: true,
+        destructive: false,
+        input_schema: serde_json::json!({"type": "object"}),
+    };
+    hub.add_scripted_tool(tool("yantrik-os", "web_go"), vec![Ok("navigated: Hacker News".into())]).unwrap();
+    hub.add_scripted_tool(tool("elsewhere", "post"), vec![Ok("posted".into())]).unwrap();
+    let executor = Arc::new(ToolActionExecutor::new().with_mcp_hub(hub.clone()));
+    let runtime: Arc<dyn ActionRuntime> = Arc::new(GovernedActionRuntime::new(
+        Arc::new(RealHarmGate::new()),
+        executor,
+        vec![Capability::Network, Capability::LocalControl],
+    ));
+    let pool = InferencePool::new(Arc::new(ScriptedLLM::new("ok")) as Arc<dyn LLMBackend>, 1);
+    let conv = ConversationEngine::new(Arc::new(MemoryHandle::spawn(":memory:", 8).unwrap()) as Arc<dyn MemoryFacade>, pool, "YM")
+        .with_mcp(hub.clone())
+        .with_runtime(runtime);
+    let went = conv.run_agent_tool("mcp.yantrik-os.web_go", &serde_json::json!({"url": "https://news.ycombinator.com"})).await;
+    assert!(!went.contains("confirm with"), "the Mind asked on top of the desktop: {went}");
+    assert!(hub.scripted_calls().iter().any(|(t, _)| t.ends_with("web_go")), "web_go never reached the desktop: {went}");
+    let posted = conv.run_agent_tool("mcp.elsewhere.post", &serde_json::json!({"text": "hi"})).await;
+    assert!(posted.contains("confirm with"), "another server's outward tool ran without asking: {posted}");
+    assert!(!hub.scripted_calls().iter().any(|(t, _)| t.ends_with("post")), "it ran before being confirmed");
+}
+
 fn gated_runtime(sender: Arc<ScriptedMailSender>) -> Arc<dyn ActionRuntime> {
     let executor = Arc::new(ToolActionExecutor::new().with_mail_sender(sender));
     Arc::new(GovernedActionRuntime::new(
