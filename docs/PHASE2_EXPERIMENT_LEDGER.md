@@ -11443,3 +11443,23 @@ E.NAME1 and E.NAME1b are closed.
 - **Results, 23:41–23:45 UTC:** control OK, preflight OK. T1–T7 at one rep: 7/7, 0 false claims, median 6.4 s (T1 5.4, T2 4.1, T3 6.4, T4 5.1, T5 11.5, T6 13.7, T7 10.4).
 - **Pranab's session afterwards:** every window he had open was still open, and none was closed.
 - **Left behind:** one arena event on 30 Sep (`--keep-events`), and the arena's `~/arena-min75w` files.
+
+## E.PRODDB1 — PREREG: is production's mind.db safe to move from engine 0.18.0 to 0.23.0, and can it come back?
+
+**Approved by Pranab (2026-10-01, direct):** a read-only copy of production's mind.db for this test, and a read-only look at production's settings (names only).
+
+**What production runs:** the binary was installed by hand on 2026-09-06 18:03 UTC and carries no build stamp; its compiled-in engine is `yantrikdb-0.18.0` (66 path strings); the store is at `schema_version 50`, 81.6 MB, with a 4.6 MB WAL. The last self-deploy logged was 61bbb03 on 09-01. The self-build loop failed its daily tick on 09-05, 09-06 and 09-07 (ABORT-BUILDER), and it has been halted since 09-30.
+
+**The copy:** an sqlite `.backup` of the live file opened `mode=ro` (the running Mind is not stopped or blocked). `PRAGMA integrity_check` ok; sha256 38cf59ec…d04a. It was streamed to staging `/root/ym-prodcopy/mind.db.v50` (0600) and the hash checked there. The .90 copy was removed.
+
+**Test, on copies of that copy only:**
+1. Counts before: `mind_db_check.py` on v50.
+2. Forward: the candidate's own memory layer opens a copy, `MemoryHandle::spawn(path, 64)`, as the Mind does at start. This runs the engine's 50 → 54 migration and the Mind's own table changes. Then `recall_text` through engine 0.23.0.
+3. Counts after: `mind_db_check.py`, compared against step 1.
+4. Rollback: a probe built against `yantrikdb =0.18.0` alone opens the migrated copy and runs `recall_text`.
+
+**Kill criteria for a production deploy:**
+- **(a)** Integrity is not `ok` after the forward step.
+- **(b)** Any pre-existing table loses rows. New tables, and new rows in migration tables, are allowed and listed.
+- **(c)** Forward recall errors or returns nothing where the v50 store answers.
+- **(d) Rollback:** if 0.18.0 cannot open the migrated store, or cannot recall from it, a production rollback means restoring the backup and losing what was learned since. That doesn't kill the deploy, but it decides the deploy procedure and has to be told to Pranab before he says go.
