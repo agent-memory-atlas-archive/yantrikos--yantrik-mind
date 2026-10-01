@@ -1,8 +1,15 @@
-# Release notes — v0.2.0
+# Release notes — v0.2.1
 
 **yantrik-mind** is a ground-up Rust AI companion built on the YantrikDB typed-memory moat — typed beliefs with Bayesian revision, contradiction detection, research that revises its own memory, multi-LLM routing, persistent delegation, an NL planner, a parallel worker pool, a code sandbox, and a deterministic harm-gate — all in one binary. v0.2.0 makes it a harness on Yantrik OS: the Mind attaches to the desktop, acts on it, and shares the person's memory with other minds under per-person walls.
 
 **Before upgrading an existing install, read [Upgrade from v0.1.x](#upgrade-from-v01x):** the engine moves forward and migrates `mind.db` on first start.
+
+## What's new in v0.2.1
+
+- **A local model behind a gateway gets its key.** `YM_LOCAL_OLLAMA_KEY` is sent as `Authorization: Bearer` to the local lane's own address, and only there. With no key set, nothing is sent: the old placeholder key, which a gateway checking the bearer would refuse, is gone from both the local lane and the brain pool. This needs yantrik-companion 3203e2e or later.
+- **With the web UI off, no registration code.** `YM_WEBUI=off` no longer creates a browser pairing code or prints one to the journal. A code left from an earlier start is removed. When the web UI is on, the code file is created owner-only (0600) from the start.
+- **The Mind says the name it was given.** The persona takes its name from `YM_MIND_NAME`, then the name chosen at setup, then "JARVIS" for installs given none, which keep it. A Mind that has been renamed treats the old name in its memory as an earlier name.
+- **`examples/open_db`** opens a *copy* of a mind.db the way the Mind does and recalls from it, for testing an upgrade before it touches a live store.
 
 ## What's new in v0.2.0
 
@@ -99,16 +106,16 @@ Requires Rust 1.91+, edition 2021, multi-thread tokio. No GPU required for API-b
 
 ## Upgrade from v0.1.x
 
-**The engine moves from yantrikdb 0.21.2 to 0.23.0, and `mind.db` migrates forward on first start** (schema 52 → 54). The move was checked against the published crates:
+**The engine moves to yantrikdb 0.23.0, and `mind.db` migrates forward on first start** (to schema 54, from 50 on engine 0.18.0 or 52 on 0.21.2). The move was checked against the published crates:
 - belief revision, recall ranking and the bundled embedder are unchanged;
 - sealed packs still mount;
-- a copy of a live store migrated with every count unchanged.
+- copies of two live stores migrated with every pre-existing row kept: a 0.21.2 store at schema 52, and a 0.18.0 production store at schema 50 (81 MB, 92 → 97 tables; E.PRODDB1).
 
-0.21.2 can still open a migrated store, so rolling back the binary does not damage the file. Still, **back up `mind.db` before the first start:**
+The older engines still open a migrated store: 0.18.0 and 0.21.2 both open it and recall from it, and 0.23.0 reopens it cleanly afterwards. So rolling back the binary does not damage the file, and nothing learned in between is lost. Still, **back up `mind.db` before the first start**, with the Mind stopped so the backup holds everything still in its write-ahead log:
 
 ```sh
 systemctl stop yantrik-mind
-cp -p /var/lib/yantrik-mind/mind.db /var/lib/yantrik-mind/mind.db.pre-0.2.0
+sqlite3 /var/lib/yantrik-mind/mind.db ".backup /var/lib/yantrik-mind/mind.db.pre-0.2.1"
 git pull
 cargo build --release --locked -p mind-core
 ```
