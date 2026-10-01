@@ -11463,3 +11463,15 @@ E.NAME1 and E.NAME1b are closed.
 - **(b)** Any pre-existing table loses rows. New tables, and new rows in migration tables, are allowed and listed.
 - **(c)** Forward recall errors or returns nothing where the v50 store answers.
 - **(d) Rollback:** if 0.18.0 cannot open the migrated store, or cannot recall from it, a production rollback means restoring the backup and losing what was learned since. That doesn't kill the deploy, but it decides the deploy procedure and has to be told to Pranab before he says go.
+
+**E.PRODDB1 — RESULT: safe to move forward, and a binary rollback works.** The test ran on staging, on copies of production's snapshot, with the forward probe at 51ccc45 (`examples/open_db`, the candidate's memory layer) and a standalone probe on `yantrikdb =0.18.0`.
+- **Baseline.** 0.18.0 on the untouched v50 store: opens, `recall_text("family")` returns 5 hits.
+- **Forward.**
+  - The memory layer opens a copy as the Mind does: 164 goals, in 1.4 s.
+  - Schema 50 → 54; integrity `ok` → `ok`; tables 92 → 97; recall returns 5 hits.
+  - **No pre-existing rows lost.** The one table that "vanished", `mind_belief_tombstone`, had 0 rows. It is replaced by `mind_belief_tombstone_v2`, as intended (`migrate_tombstones_from_v1`, E.TOMB1).
+  - Growth is only the probe's own recalls (`recall_impressions` +5, `oplog` +5, `recall_demand` +1) and two `meta` keys.
+  - New tables: `extraction_refusals`, `learned_relation_pattern_support`, `learned_relation_patterns`, `mind_belief_authors`, `mind_belief_tombstone_v2`, `token_case_stats`.
+- **Rollback.** 0.18.0 opens the migrated store and recalls 5 hits. It leaves the marker at 54. The candidate then reopens that store cleanly, again 164 goals and 5 hits.
+- **Verdict.** Kill criteria (a)–(c) hold. For (d), going back to the current production binary is a binary swap: no restore, and nothing learned in between is lost. This was checked at the engine level. The old Mind's own memory layer was not run against the new tables; its changes are additive.
+- **Clean-up.** The production copy and every working copy were deleted from staging after the test. Only the row-count JSONs (table names and numbers) remain.
